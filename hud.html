@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
-<title>J.A.R.V.I.S. Terminal</title>
+<title>JARVIS Terminal</title>
 <style>
   :root {
     --hud-cyan: #00e1ff;
@@ -172,6 +172,26 @@
      Any future panel (weather detail, CAD preview, satellite feed, etc.)
      can reuse .holo-panel + the openHoloPanel()/closeHoloPanel() JS helpers -
      just give it a unique id and build the inner HTML. */
+  .holo-dock {
+    position: fixed; top: 96px; left: 50%; transform: translateX(-50%);
+    z-index: 35; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
+    pointer-events: auto;
+  }
+  .holo-chip {
+    border: 1px solid var(--hud-cyan); background: rgba(0,225,255,0.08);
+    color: var(--hud-cyan); font-family: 'Orbitron', sans-serif; font-size: 9px;
+    letter-spacing: 1.5px; padding: 6px 12px; cursor: pointer; text-transform: uppercase;
+    box-shadow: 0 0 10px rgba(0,225,255,0.15);
+  }
+  .holo-chip:hover { background: rgba(0,225,255,0.16); }
+
+  .holo-workspace {
+    position: fixed;
+    inset: 90px 24px 48px;
+    z-index: 28;
+    pointer-events: none;
+  }
+
   .holo-panel {
     position: fixed; top: 50%; left: 50%;
     transform: translate(-50%, -50%) scale(0.92);
@@ -189,10 +209,28 @@
     overflow-y: auto;
   }
   .holo-panel.visible { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
+  .holo-panel.floating {
+    position: absolute;
+    transform: scale(0.92);
+    min-width: 260px;
+    width: min(34vw, 420px);
+    max-height: 54vh;
+    pointer-events: auto;
+    animation: holoWindowIn 380ms ease;
+  }
+  .holo-panel.floating.visible {
+    transform: scale(1);
+  }
+  @keyframes holoWindowIn {
+    from { opacity: 0; transform: scale(0.88) translateY(16px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
 
+  .holo-panel.dragging { transition: none; }
   .holo-panel-header {
     display: flex; justify-content: space-between; align-items: center;
     border-bottom: 2px solid var(--hud-border); padding-bottom: 10px; margin-bottom: 14px;
+    cursor: move;
   }
   .holo-panel-title {
     font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: clamp(13px, 2vw, 16px);
@@ -215,6 +253,27 @@
   .holo-img { width: 100%; height: 150px; object-fit: cover; border: 1px solid var(--hud-cyan); box-shadow: 0 0 10px rgba(0,225,255,0.25); background: #001122; }
   .holo-news-item { font-size: 12px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,225,255,0.15); }
   .holo-news-date { font-size: 10px; opacity: 0.6; margin-left: 6px; }
+  .holo-bullet-list { display: grid; gap: 6px; margin-top: 8px; }
+  .holo-bullet-list div { font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(0,225,255,0.12); }
+  .tab-link-grid { display: grid; gap: 8px; margin-top: 10px; }
+  .tab-link {
+    display: block;
+    color: #dfffff;
+    text-decoration: none;
+    border: 1px solid rgba(0,225,255,0.24);
+    padding: 8px 10px;
+    background: rgba(0,225,255,0.05);
+  }
+  .tab-link:hover { background: rgba(0,225,255,0.16); }
+  .window-dismiss {
+    opacity: 0;
+    transform: scale(0.7);
+    transition: opacity 160ms ease, transform 160ms ease;
+  }
+  .window-dismiss.visible {
+    opacity: 1;
+    transform: scale(1);
+  }
 
   /* Globe panel gets a taller, map-friendly layout */
   #globePanel { width: min(94vw, 1100px); }
@@ -289,6 +348,14 @@
 <div id="diagLog"></div>
 <div class="ticker"><div class="ticker-inner" id="tickerText">INITIALIZING...</div></div>
 
+<div class="holo-workspace" id="holoWorkspace"></div>
+
+<div class="holo-dock">
+  <button class="holo-chip" onclick="spawnUtilityWindow('info')">INFORMATION</button>
+  <button class="holo-chip" onclick="spawnUtilityWindow('data')">DATA</button>
+  <button class="holo-chip" onclick="spawnUtilityWindow('web')">WEBSITE</button>
+</div>
+
 <!-- ============ HOLOGRAPHIC PANELS ============ -->
 
 <!-- Research / factual info panel -->
@@ -320,8 +387,24 @@
       <div class="holo-section-label">// DESCRIPTION</div>
       <div class="holo-body-text" id="globeDescription">—</div>
     </div>
+    <div>
+      <div class="holo-section-label">// WEATHER</div>
+      <div class="holo-body-text" id="globeWeather">—</div>
+    </div>
   </div>
+  <div class="holo-section-label">// NEARBY</div>
+  <div id="globeNearby" class="holo-bullet-list"></div>
 </div>
+
+<template id="floatingPanelTemplate">
+  <div class="holo-panel floating visible">
+    <div class="holo-panel-header">
+      <div class="holo-panel-title">SYSTEM WINDOW</div>
+      <div class="holo-panel-close">CLOSE ✕</div>
+    </div>
+    <div class="holo-body-text">—</div>
+  </div>
+</template>
 
 <script>
   // ============ CORE STATE ============
@@ -334,18 +417,133 @@
   const transcript = document.getElementById("transcript");
   const startOverlay = document.getElementById("startOverlay");
   const startLabel = document.getElementById("startLabel");
+  const holoWorkspace = document.getElementById("holoWorkspace");
+  const floatingPanelTemplate = document.getElementById("floatingPanelTemplate");
 
-  const SYSTEM_PROMPT = "You are J.A.R.V.I.S. Address the user as 'sir'. Dry British wit, polite, technically precise. Keep every answer under 30 words, no exceptions. Current year is 2026.";
-  const TTS_PROXY_URL = "http://localhost:5001/tts";
+  const SYSTEM_PROMPT = "You are JARVIS. Address the user as 'sir'. Dry British wit, polite, technically precise. Keep every answer under 30 words, no exceptions. Current year is 2026.";
+  const TTS_PROXY_URL = "http://localhost:8000/tts";
+  const ASSISTANT_API_URL = "http://localhost:8000/api/assistant";
+  const PAGE_CONTEXT_API_URL = "http://localhost:8000/api/page-context";
+  const isExtension = typeof chrome !== "undefined" && !!chrome.runtime?.id;
+  let floatingWindowIndex = 0;
+  let activeMapMarker = null;
 
   // ============ MODULAR HOLOGRAPHIC PANEL HELPERS ============
   function openHoloPanel(id) {
-    document.querySelectorAll(".holo-panel").forEach(p => { if (p.id !== id) p.classList.remove("visible"); });
-    document.getElementById(id).classList.add("visible");
+    const panel = document.getElementById(id);
+    panel.classList.add("visible");
+    panel.style.left = "50%";
+    panel.style.top = "50%";
+    panel.style.transform = "translate(-50%, -50%) scale(1)";
   }
   function closeHoloPanel(id) {
     document.getElementById(id).classList.remove("visible");
   }
+
+  function registerFloatingDismiss(panel) {
+    const rect = panel.getBoundingClientRect();
+    const threshold = 80;
+    const offscreen = rect.right < threshold || rect.left > window.innerWidth - threshold || rect.bottom < threshold || rect.top > window.innerHeight - threshold;
+    if (offscreen) {
+      panel.classList.add("window-dismiss");
+      setTimeout(() => panel.remove(), 180);
+      return true;
+    }
+    return false;
+  }
+
+  function registerPanelChrome(panel, closeAction) {
+    const closeBtn = panel.querySelector(".holo-panel-close");
+    if (closeBtn) closeBtn.addEventListener("click", () => closeAction());
+    makePanelDraggable(panel, { allowDismiss: true, onDrop: () => registerFloatingDismiss(panel) });
+  }
+
+  function createFloatingWindow(config) {
+    const fragment = floatingPanelTemplate.content.cloneNode(true);
+    const panel = fragment.querySelector(".holo-panel");
+    const title = fragment.querySelector(".holo-panel-title");
+    const body = fragment.querySelector(".holo-body-text");
+
+    panel.dataset.windowIndex = String(floatingWindowIndex++);
+    title.textContent = config.title;
+    if (typeof config.content === "string") {
+      body.innerHTML = config.content;
+    } else {
+      body.replaceWith(config.content);
+    }
+
+    holoWorkspace.appendChild(fragment);
+    const createdPanel = holoWorkspace.lastElementChild;
+    createdPanel.style.left = `${config.left ?? (140 + (floatingWindowIndex % 4) * 120)}px`;
+    createdPanel.style.top = `${config.top ?? (80 + (floatingWindowIndex % 3) * 80)}px`;
+    createdPanel.style.transform = "scale(1)";
+    registerPanelChrome(createdPanel, () => createdPanel.remove());
+    playPing();
+    return createdPanel;
+  }
+
+  function spawnUtilityWindow(type) {
+    if (type === "info") {
+      createFloatingWindow({
+        title: "INFORMATION STREAM",
+        content: `<div class="holo-bullet-list"><div>Awaiting live intelligence, sir.</div><div>Ask about a topic, place, or active webpage.</div></div>`
+      });
+      return;
+    }
+    if (type === "data") {
+      createFloatingWindow({
+        title: "SYSTEM DATA",
+        content: `<div class="holo-bullet-list"><div>CPU ${Math.round(simState.cpu)}%</div><div>MEMORY ${Math.round(simState.mem)}%</div><div>NETWORK ${Math.round(simState.net)}%</div></div>`
+      });
+      return;
+    }
+    createFloatingWindow({
+      title: "WEBSITE ACTIONS",
+      content: `<div class="holo-bullet-list"><div>Use voice command: explain this webpage</div><div>Use voice command: open the official site</div></div>`
+    });
+  }
+
+  function makePanelDraggable(panel, options) {
+    const header = panel.querySelector(".holo-panel-header");
+    if (!header) return;
+    let dragging = false;
+    let startX = 0;
+    let startY = 0;
+    let originLeft = 0;
+    let originTop = 0;
+
+    header.addEventListener("pointerdown", (event) => {
+      if (event.target.closest(".holo-panel-close")) return;
+      dragging = true;
+      panel.classList.add("dragging");
+      startX = event.clientX;
+      startY = event.clientY;
+      const rect = panel.getBoundingClientRect();
+      originLeft = rect.left;
+      originTop = rect.top;
+      header.setPointerCapture(event.pointerId);
+    });
+
+    header.addEventListener("pointermove", (event) => {
+      if (!dragging) return;
+      const deltaX = event.clientX - startX;
+      const deltaY = event.clientY - startY;
+      panel.style.left = `${originLeft + deltaX}px`;
+      panel.style.top = `${originTop + deltaY}px`;
+      panel.style.transform = "translate(0, 0)";
+    });
+
+    const finishDrag = () => {
+      dragging = false;
+      panel.classList.remove("dragging");
+      if (options?.allowDismiss) options.onDrop?.();
+    };
+
+    header.addEventListener("pointerup", finishDrag);
+    header.addEventListener("pointercancel", finishDrag);
+  }
+
+  document.querySelectorAll(".holo-panel").forEach(panel => makePanelDraggable(panel));
 
   // ============ SOUND CLIPS ============
   function playClip(src, volume) {
@@ -356,6 +554,8 @@
   function playPing() { playClip("sfx_ping.mp3", 0.5); }
   function playSweep() { playClip("sfx_sweep.mp3", 0.4); }
   function playTick() { playClip("sfx_tick.mp3", 0.35); }
+  function playHoloOpen() { playClip("sfx_binary_blip.mp3", 0.42); }
+  function playNotify() { playClip("sfx_binary_intro.mp3", 0.38); }
 
   let chatterInterval = null;
   function startProcessingChatter() {
@@ -419,6 +619,7 @@
     startOverlay.style.display = "none";
     initAudioEngine();
     playSweep();
+    playNotify();
     speak("Systems fully operational, sir.", () => startListening());
   }
 
@@ -460,7 +661,7 @@
   async function speak(text, onComplete) {
     currentState = "SPEAKING";
     statusText.textContent = "AUDIO OUTPUT...";
-    transcript.textContent = "J.A.R.V.I.S.: " + text;
+    transcript.textContent = "JARVIS: " + text;
 
     try {
       const res = await fetch(TTS_PROXY_URL, {
@@ -522,14 +723,101 @@
   }
 
   // ============ INTENT DETECTION ============
-  const LOCATION_PATTERN = /\b(where is|take me to|show me .* on the map|locate)\b/i;
+  const LOCATION_PATTERN = /\b(where is|where are|where am i|take me to|show me|locate|map of|fly to|near me|around me)\b/i;
   const RESEARCH_PATTERN = /\b(what is|who is|tell me about|explain|show me|latest|news about)\b/i;
 
   function extractLocationQuery(text) {
-    return text.replace(LOCATION_PATTERN, "").replace(/on the map/i, "").trim();
+    const cleaned = text
+      .replace(/jarvis[:,]?/i, "")
+      .replace(LOCATION_PATTERN, "")
+      .replace(/\b(on the map|the map|the city|the country)\b/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    return cleaned;
   }
   function extractResearchQuery(text) {
     return text.replace(RESEARCH_PATTERN, "").trim();
+  }
+
+  function isCurrentLocationRequest(text) {
+    return /\b(where am i|my location|near me|around me)\b/i.test(text);
+  }
+
+  async function getCurrentCoordinates() {
+    if (!navigator.geolocation) return null;
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 }
+      );
+    });
+  }
+
+  function renderImageGrid(images) {
+    if (!images?.length) return `<div class="holo-bullet-list"><div>No visual intelligence available yet.</div></div>`;
+    return `<div class="holo-image-grid">${images.slice(0, 6).map(src => `<img src="${src}" class="holo-img" onerror="this.style.display='none'" />`).join("")}</div>`;
+  }
+
+  function renderLinkGrid(links) {
+    if (!links?.length) return `<div class="holo-bullet-list"><div>No external references returned.</div></div>`;
+    return `<div class="tab-link-grid">${links.map(link => `<a class="tab-link" href="${link.url}" target="_blank" rel="noreferrer">${link.label}</a>`).join("")}</div>`;
+  }
+
+  function openResearchWindows(question, payload) {
+    const research = payload.research || {};
+    const baseLeft = 80 + Math.floor(Math.random() * 80);
+    const baseTop = 90 + Math.floor(Math.random() * 40);
+
+    createFloatingWindow({
+      title: "INFORMATION",
+      left: baseLeft,
+      top: baseTop,
+      content: `<div>${research.summary || payload.response}</div>`
+    });
+
+    createFloatingWindow({
+      title: "DATA",
+      left: baseLeft + 360,
+      top: baseTop + 40,
+      content: `<div class="holo-bullet-list">${(research.news || "").split("\n").filter(Boolean).slice(0, 4).map(item => `<div>${item}</div>`).join("") || `<div>Context processed for ${question}.</div>`}</div>`
+    });
+
+    if (research.images?.length) {
+      createFloatingWindow({
+        title: "IMAGES",
+        left: baseLeft + 120,
+        top: baseTop + 220,
+        content: renderImageGrid(research.images)
+      });
+    }
+
+    if (research.links?.length) {
+      createFloatingWindow({
+        title: "WEBSITE",
+        left: baseLeft + 520,
+        top: baseTop + 180,
+        content: renderLinkGrid(research.links)
+      });
+    }
+
+    if (research.page) {
+      createFloatingWindow({
+        title: "PAGE CONTEXT",
+        left: baseLeft + 580,
+        top: baseTop,
+        content: `<div class="holo-bullet-list"><div>${research.page.title}</div><div>${research.page.excerpt || "No selected text available."}</div></div>`
+      });
+    }
+
+    playHoloOpen();
+  }
+
+  function clearExistingMapMarker() {
+    if (activeMapMarker) {
+      activeMapMarker.remove();
+      activeMapMarker = null;
+    }
   }
 
   // ---- Location panel ----
@@ -552,27 +840,51 @@
   async function tryLocationIntent(question) {
     if (!LOCATION_PATTERN.test(question)) return false;
     const place = extractLocationQuery(question);
-    if (!place) return false;
+    const currentCoords = isCurrentLocationRequest(question) ? await getCurrentCoordinates() : null;
+    if (!place && !currentCoords) return false;
 
-    document.getElementById("globeTitle").textContent = place.toUpperCase();
+    document.getElementById("globeTitle").textContent = (place || "CURRENT LOCATION").toUpperCase();
     document.getElementById("globeCoords").textContent = "SEARCHING...";
     document.getElementById("globeDescription").textContent = "—";
+    document.getElementById("globeWeather").textContent = "—";
+    document.getElementById("globeNearby").innerHTML = "";
     openHoloPanel("globePanel");
+    playHoloOpen();
 
     const map = ensureGlobeMap();
     setTimeout(() => map.resize(), 100);
     map.jumpTo({ center: [-20, 30], zoom: 1.2, pitch: 0, bearing: 0 });
 
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}&addressdetails=1`);
-      const results = await res.json();
-      if (results && results.length > 0) {
-        const lat = parseFloat(results[0].lat);
-        const lon = parseFloat(results[0].lon);
-        document.getElementById("globeTitle").textContent = results[0].display_name.split(',')[0].toUpperCase();
-        document.getElementById("globeCoords").textContent = `LAT ${lat.toFixed(4)}° / LON ${lon.toFixed(4)}°`;
-        document.getElementById("globeDescription").textContent = results[0].display_name;
-        map.flyTo({ center: [lon, lat], zoom: 13, pitch: 60, bearing: 30, speed: 1.3, curve: 1.4, essential: true });
+      const payload = currentCoords ? { latitude: currentCoords.latitude, longitude: currentCoords.longitude, query: "Current location" } : { query: place };
+      const res = await fetch("http://localhost:8000/api/location-info", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.status === "success") {
+        const coords = data.coords || {};
+        const title = (data.title || place).toUpperCase();
+        document.getElementById("globeTitle").textContent = title;
+        document.getElementById("globeCoords").textContent = `LAT ${Number(coords.lat || 0).toFixed(4)}° / LON ${Number(coords.lon || 0).toFixed(4)}°`;
+        document.getElementById("globeDescription").textContent = `${data.description || "Location data ready."}`;
+        document.getElementById("globeWeather").textContent = (data.weather && data.weather.condition)
+          ? `${data.weather.condition} · ${data.weather.temperature}°F`
+          : "WEATHER DATA UNAVAILABLE";
+        document.getElementById("globeNearby").innerHTML = (data.nearby || []).slice(0, 5).map(item => `<div>${item}</div>`).join("");
+        if (coords.lat && coords.lon) {
+          clearExistingMapMarker();
+          map.flyTo({ center: [coords.lon, coords.lat], zoom: 13, pitch: 60, bearing: 30, speed: 1.3, curve: 1.4, essential: true });
+          const markerEl = document.createElement("div");
+          markerEl.style.width = "14px";
+          markerEl.style.height = "14px";
+          markerEl.style.borderRadius = "50%";
+          markerEl.style.background = "#ff3300";
+          markerEl.style.boxShadow = "0 0 18px #ff3300";
+          activeMapMarker = new maplibregl.Marker({ element: markerEl }).setLngLat([coords.lon, coords.lat]).addTo(map);
+        }
+        openResearchWindows(question, { response: data.description, research: { summary: data.description, images: data.images, links: data.links, news: (data.nearby || []).map(item => `Nearby: ${item}`).join("\n") } });
       } else {
         document.getElementById("globeCoords").textContent = "TARGET UNREACHABLE";
       }
@@ -650,8 +962,17 @@
     return { matched: true, context };
   }
 
+  async function getPageContext() {
+    if (!isExtension) return null;
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: "JARVIS_PAGE_CONTEXT" }, (response) => {
+        resolve(response?.pageContext || null);
+      });
+    });
+  }
+
   // ============ PERSISTENT MEMORY (via jarvis_proxy.py) ============
-  const MEMORY_URL = "http://localhost:5001/memory";
+  const MEMORY_URL = "http://localhost:8000/memory";
 
   async function saveToMemory(role, text) {
     try {
@@ -690,64 +1011,38 @@
     startProcessingChatter();
     saveToMemory("user", question);
 
-    const wasLocation = await tryLocationIntent(question);
-    let extraContext = "";
-    if (!wasLocation) {
-      const researchResult = await tryResearchIntent(question);
-      extraContext = researchResult.context;
-    }
-
-    const memoryEntries = await recallMemory(8);
-    const memoryContext = formatMemoryAsContext(memoryEntries);
+    const pageContext = /\b(this webpage|this page|on screen|what am i looking at)\b/i.test(question) ? await getPageContext() : null;
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      const locationContext = isCurrentLocationRequest(question) ? await getCurrentCoordinates() : null;
 
-      const contextParts = [extraContext, memoryContext].filter(Boolean).join(" ");
-      const promptWithContext = contextParts
-        ? `${question}\n\n[Context, use if relevant: ${contextParts}]`
-        : question;
-
-      const response = await fetch("http://localhost:11434/api/generate", {
+      const response = await fetch(ASSISTANT_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
         body: JSON.stringify({
-          model: "llama3.2",
-          system: SYSTEM_PROMPT,
-          prompt: promptWithContext,
-          stream: true,
-          options: { num_predict: 140 }
+          prompt: question,
+          page_context: pageContext,
+          location_context: locationContext
         })
       });
-      if (!response.ok) throw new Error("Ollama endpoint unreachable.");
+      if (!response.ok) throw new Error("Assistant endpoint unreachable.");
+      const payload = await response.json();
+      if (payload.status !== "success") throw new Error(payload.message || "Assistant request failed.");
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let fullResponse = "";
-      let firstChunk = false;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (!firstChunk) { firstChunk = true; stopProcessingChatter(); statusText.textContent = "RECEIVING..."; }
-        const lines = decoder.decode(value, { stream: true }).split("\n").filter(Boolean);
-        for (const line of lines) {
-          try {
-            const json = JSON.parse(line);
-            fullResponse += json.response;
-            transcript.textContent = "J.A.R.V.I.S.: " + fullResponse;
-          } catch (e) {}
-        }
-      }
-      clearTimeout(timeoutId);
       stopProcessingChatter();
-      saveToMemory("jarvis", fullResponse);
-      speak(fullResponse, () => { statusText.textContent = "SYSTEM ACTIVE"; centerText.classList.remove("active"); isActiveSession = false; });
+      transcript.textContent = "JARVIS: " + payload.response;
+
+      if (payload.category === "LOCATION") {
+        await tryLocationIntent(question);
+      } else {
+        openResearchWindows(question, payload);
+      }
+
+      saveToMemory("jarvis", payload.response);
+      speak(payload.response, () => { statusText.textContent = "SYSTEM ACTIVE"; centerText.classList.remove("active"); isActiveSession = false; });
     } catch (err) {
       stopProcessingChatter();
-      const reason = err.name === "AbortError" ? "RESPONSE TIMED OUT" : "OLLAMA ERROR";
+      const reason = err.name === "AbortError" ? "RESPONSE TIMED OUT" : "ASSISTANT ERROR";
       statusText.textContent = reason;
       transcript.textContent = err.message;
       logDiagnostic("> " + reason + ": " + err.message, true);
@@ -758,7 +1053,7 @@
       // Self-diagnosis: tell the user what's actually wrong instead of going silent
       const diagnosis = err.name === "AbortError"
         ? "My apologies, sir - that request timed out. My local model may be overloaded."
-        : "Sir, I'm unable to reach my local reasoning engine. Please confirm Ollama is running.";
+        : "Sir, I'm unable to reach my local assistant services. Please confirm the connector is running.";
       speak(diagnosis, () => startListening());
     }
   }
