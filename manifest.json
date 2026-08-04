@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "JARVIS Extension",
-  "version": "1.0.0",
-  "description": "Voice-first JARVIS holographic assistant for Chrome.",
+  "version": "1.1.0",
+  "description": "JARVIS browser bridge — launcher and page-context connector for localhost JARVIS server.",
   "permissions": ["activeTab", "storage", "tabs", "scripting"],
   "host_permissions": [
     "http://localhost:8000/*",
@@ -14,12 +14,12 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "JARVIS",
-    "default_popup": "hud.html"
+    "default_title": "JARVIS — Open Interface"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
+      "exclude_matches": ["http://localhost:8000/*", "http://127.0.0.1:8000/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
     }

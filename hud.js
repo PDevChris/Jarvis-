@@ -6,8 +6,6 @@
   const centerText = document.getElementById("centerText");
   const statusText = document.getElementById("statusText");
   const transcript = document.getElementById("transcript");
-  const startOverlay = document.getElementById("startOverlay");
-  const startLabel = document.getElementById("startLabel");
   const holoWorkspace = document.getElementById("holoWorkspace");
   const floatingPanelTemplate = document.getElementById("floatingPanelTemplate");
 
@@ -200,25 +198,26 @@
           bootSystem();
           return;
         }
-        if (startOverlay.style.display !== "none") requestAnimationFrame(checkClap);
+        if (!bootStarted) requestAnimationFrame(checkClap);
       }
       checkClap();
     } catch (err) {
-      startLabel.textContent = "MIC ACCESS DENIED - CLICK TO START";
+      statusText.textContent = "MIC ACCESS DENIED";
+      transcript.textContent = "Grant microphone access then reload JARVIS.";
     }
   }
-  startOverlay.addEventListener("click", bootSystem);
   armClapDetector();
 
   let bootStarted = false;
   function bootSystem() {
     if (bootStarted) return;
     bootStarted = true;
-    startOverlay.style.display = "none";
+    statusText.classList.remove("standby");
+    transcript.textContent = "";
     initAudioEngine();
     playSweep();
     playNotify();
-    speak("Systems fully operational, sir.", () => startListening());
+    speak("Online, sir. Standing by.", () => startListening());
   }
 
   // ============ TTS ============

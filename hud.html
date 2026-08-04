@@ -42,26 +42,9 @@
     background: radial-gradient(circle at center, transparent 30%, rgba(2,8,19,0.95) 92%);
   }
 
-  /* ---------- CLAP-TO-WAKE ---------- */
-  #startOverlay {
-    position: fixed; inset: 0; z-index: 50; background: rgba(1,6,17,0.96);
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-  }
-  .clap-ring {
-    width: clamp(110px, 18vw, 160px); height: clamp(110px, 18vw, 160px);
-    border: 2px solid var(--hud-cyan); border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 0 25px rgba(0,225,255,0.25);
-    animation: clapPulse 2.2s ease-in-out infinite;
-    margin-bottom: 24px;
-  }
-  @keyframes clapPulse {
-    0%, 100% { transform: scale(1); box-shadow: 0 0 25px rgba(0,225,255,0.25); }
-    50% { transform: scale(1.06); box-shadow: 0 0 40px rgba(0,225,255,0.45); }
-  }
-  .clap-icon { font-size: clamp(28px, 5vw, 40px); }
-  #startLabel { font-family: 'Eurostile', 'BankGothic Md BT', 'Segoe UI', sans-serif; font-size: clamp(11px, 2vw, 13px); letter-spacing: 3px; text-align: center; margin-bottom: 8px; }
-  #startSubLabel { font-size: 10px; opacity: 0.6; letter-spacing: 1px; }
+  /* ---------- STANDBY PULSE ---------- */
+  @keyframes standbyPulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+  #statusText.standby { animation: standbyPulse 2.8s ease-in-out infinite; }
 
   /* ---------- TOP BADGE ---------- */
   .user-badge {
@@ -293,12 +276,6 @@
 <div class="crt-overlay"></div>
 <div class="vignette"></div>
 
-<div id="startOverlay">
-  <div class="clap-ring"><div class="clap-icon">👏</div></div>
-  <div id="startLabel">CLAP TO ACTIVATE</div>
-  <div id="startSubLabel">or click anywhere</div>
-</div>
-
 <div class="user-badge">
   <div class="dot"></div>
   <div>
@@ -338,8 +315,8 @@
 </div>
 
 <div class="center-overlay-text" id="centerText">
-  <div id="statusText">SYSTEM STANDBY</div>
-  <div id="transcript"></div>
+  <div id="statusText" class="standby">SYSTEM STANDBY</div>
+  <div id="transcript">CLAP TO WAKE JARVIS</div>
 </div>
 
 <div class="data-stream stream-left"><div class="stream-inner" id="streamLeft"></div></div>

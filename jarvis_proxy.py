@@ -7,7 +7,7 @@ import warnings
 from datetime import datetime
 import requests
 import psutil
-from flask import Flask, request, Response, jsonify, send_file
+from flask import Flask, request, Response, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 try:
     from ddgs import DDGS
@@ -540,7 +540,11 @@ def tts():
         return jsonify({"error": str(e)}), 502
 
 # Serve the existing HUD page directly from Flask
-HUD_HTML_PATH = os.path.join(os.path.dirname(__file__), "hud.html")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+HUD_HTML_PATH = os.path.join(BASE_DIR, "hud.html")
+
+# Allowed extensions for static assets (prevents Python source exposure)
+_STATIC_EXTS = {".js", ".css", ".mp3", ".wav", ".ico", ".png", ".jpg", ".gif", ".svg", ".woff", ".woff2"}
 
 @app.route("/")
 def index():
@@ -548,6 +552,15 @@ def index():
         with open(HUD_HTML_PATH, "r", encoding="utf-8") as f:
             return Response(f.read(), mimetype="text/html")
     return "hud.html not found in directory.", 404
+
+@app.route("/<path:filename>")
+def static_assets(filename):
+    safe = os.path.normpath(filename).lstrip("/\\")
+    if ".." in safe:
+        return "Forbidden", 403
+    if os.path.splitext(safe)[1].lower() not in _STATIC_EXTS:
+        return "Not found", 404
+    return send_from_directory(BASE_DIR, safe)
 
 if __name__ == "__main__":
     print("--------------------------------------------------")
