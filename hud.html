@@ -19,9 +19,13 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
-    background: var(--hud-bg); height: 100vh; width: 100vw; overflow: hidden;
-    font-family: 'Share Tech Mono', monospace; color: var(--hud-cyan);
-    cursor: pointer; user-select: none;
+    background: var(--hud-bg);
+    height: 100vh; width: 100vw;
+    overflow: hidden;
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--hud-cyan);
+    cursor: pointer;
+    user-select: none;
   }
   canvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; }
   #bgCanvas { z-index: 1; }
@@ -48,7 +52,8 @@
     width: clamp(110px, 18vw, 160px); height: clamp(110px, 18vw, 160px);
     border: 2px solid var(--hud-cyan); border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 0 25px rgba(0,225,255,0.25); animation: clapPulse 2.2s ease-in-out infinite;
+    box-shadow: 0 0 25px rgba(0,225,255,0.25);
+    animation: clapPulse 2.2s ease-in-out infinite;
     margin-bottom: 24px;
   }
   @keyframes clapPulse {
@@ -59,88 +64,167 @@
   #startLabel { font-family: 'Orbitron', sans-serif; font-size: clamp(11px, 2vw, 13px); letter-spacing: 3px; text-align: center; margin-bottom: 8px; }
   #startSubLabel { font-size: 10px; opacity: 0.6; letter-spacing: 1px; }
 
-  /* ---------- HUD ELEMENTS ---------- */
+  /* ---------- TOP BADGE ---------- */
   .user-badge {
-    position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 5;
-    background: var(--hud-glass); border: 1px solid var(--hud-border);
+    position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+    z-index: 5; background: var(--hud-glass); border: 1px solid var(--hud-border);
     padding: 6px 16px; display: flex; align-items: center; gap: 10px;
-    box-shadow: 0 0 15px rgba(0,225,255,0.15); font-family: 'Orbitron', monospace; pointer-events: none;
+    box-shadow: 0 0 15px rgba(0,225,255,0.15);
+    font-family: 'Orbitron', monospace; pointer-events: none;
+    max-width: 90vw;
   }
-  .user-badge .dot { width: 8px; height: 8px; background: var(--hud-cyan); border-radius: 50%; box-shadow: 0 0 8px var(--hud-cyan); animation: blinkDot 1.4s ease-in-out infinite; }
+  .user-badge .dot { width: 8px; height: 8px; background: var(--hud-cyan); border-radius: 50%; box-shadow: 0 0 8px var(--hud-cyan); animation: blinkDot 1.4s ease-in-out infinite; flex-shrink: 0; }
   @keyframes blinkDot { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
-  .user-badge .title { font-size: 10px; font-weight: bold; letter-spacing: 1px; }
-  .user-badge .subtitle { font-size: 8px; opacity: 0.7; }
+  .user-badge .title { font-size: 10px; font-weight: bold; letter-spacing: 1px; white-space: nowrap; }
+  .user-badge .subtitle { font-size: 8px; opacity: 0.7; white-space: nowrap; }
 
-  .card-stack { position: fixed; top: 70px; width: 210px; z-index: 5; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+  /* ---------- DENSE CARD STACKS (hidden on narrow screens) ---------- */
+  .card-stack {
+    position: fixed; top: 70px; width: 210px; z-index: 5;
+    display: flex; flex-direction: column; gap: 10px; pointer-events: none;
+  }
   .card-stack.left { left: 16px; } .card-stack.right { right: 16px; text-align: right; }
-  .hud-card { background: var(--hud-glass); border: 1px solid var(--hud-border); padding: 8px 10px; font-size: 9px; line-height: 1.5; box-shadow: inset 0 0 10px rgba(0,225,255,0.05); }
-  .card-title { font-family: 'Orbitron'; font-size: 9px; font-weight: bold; border-bottom: 1px solid var(--hud-border); padding-bottom: 3px; margin-bottom: 5px; letter-spacing: 1px; opacity: 0.9; }
+  .hud-card {
+    background: var(--hud-glass); border: 1px solid var(--hud-border);
+    padding: 8px 10px; font-size: 9px; line-height: 1.5;
+    box-shadow: inset 0 0 10px rgba(0,225,255,0.05);
+  }
+  .card-title {
+    font-family: 'Orbitron', sans-serif; font-size: 9px; font-weight: bold;
+    border-bottom: 1px solid var(--hud-border); padding-bottom: 3px; margin-bottom: 5px;
+    letter-spacing: 1px; opacity: 0.9;
+  }
   .mini-graph { width: 100%; height: 28px; margin-top: 4px; }
 
-  #weatherWidget { position: fixed; top: 70px; right: 16px; z-index: 5; font-size: 11px; text-align: right; line-height: 1.5; letter-spacing: 1px; pointer-events: none; text-shadow: 0 0 6px var(--hud-cyan); }
-  #weatherWidget .temp-value { font-size: 18px; font-weight: bold; }
-  
-  @media (max-width: 1100px) { .card-stack, #weatherWidget, .data-stream, #diagLog { display: none; } }
-
-  /* ---------- CENTER STATUS TEXT ---------- */
-  .center-overlay-text {
-    position: fixed; top: 50%; left: 50%; transform: translate(-50%, clamp(140px, 22vh, 210px));
-    z-index: 6; text-align: center; pointer-events: none; width: min(90vw, 550px);
+  @media (max-width: 1100px) {
+    .card-stack { display: none; }
   }
-  #statusText { font-size: clamp(10px, 1.4vw, 12px); letter-spacing: 3px; font-family: 'Orbitron'; text-transform: uppercase; text-shadow: 0 0 6px var(--hud-cyan); }
-  #transcript { font-size: clamp(12px, 1.8vw, 14px); margin-top: 8px; opacity: 0.95; line-height: 1.6; word-wrap: break-word; text-shadow: 0 0 8px var(--hud-cyan); }
-  .center-overlay-text.active #statusText, .center-overlay-text.active #transcript { color: var(--hud-orange); text-shadow: 0 0 8px var(--hud-orange); }
 
-  /* ---------- DECORATIONS ---------- */
-  .data-stream { position: fixed; top: 0; width: 90px; height: 100vh; overflow: hidden; z-index: 2; pointer-events: none; font-size: 10px; line-height: 1.5; opacity: 0.25; text-shadow: 0 0 4px var(--hud-cyan); }
+  /* ---------- WEATHER ---------- */
+  #weatherWidget {
+    position: fixed; top: 70px; right: 16px; z-index: 5;
+    font-size: 11px; text-align: right; line-height: 1.5; letter-spacing: 1px;
+    pointer-events: none; text-shadow: 0 0 6px var(--hud-cyan);
+  }
+  #weatherWidget .temp-value { font-size: 18px; font-weight: bold; }
+  @media (max-width: 1100px) { #weatherWidget { display: none; } }
+
+  /* ---------- CENTER STATUS TEXT (fixed clipping issues) ---------- */
+  .center-overlay-text {
+    position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%, clamp(140px, 22vh, 210px));
+    z-index: 6; text-align: center; pointer-events: none;
+    width: min(90vw, 480px);
+    max-height: 30vh;
+    overflow: visible;
+  }
+  #statusText {
+    font-size: clamp(10px, 1.4vw, 12px); letter-spacing: 3px;
+    font-family: 'Orbitron', sans-serif; white-space: nowrap;
+  }
+  #transcript {
+    font-size: clamp(11px, 1.6vw, 13px); margin-top: 8px; opacity: 0.95;
+    line-height: 1.5; word-wrap: break-word; overflow-wrap: break-word;
+  }
+  .center-overlay-text.active #statusText,
+  .center-overlay-text.active #transcript { color: var(--hud-orange); text-shadow: 0 0 8px var(--hud-orange); }
+
+  /* ---------- SCROLLING HEX STREAMS ---------- */
+  .data-stream {
+    position: fixed; top: 0; width: 90px; height: 100vh; overflow: hidden;
+    z-index: 2; pointer-events: none; font-size: 10px; line-height: 1.5;
+    opacity: 0.25; text-shadow: 0 0 4px var(--hud-cyan);
+  }
   .stream-left { left: 240px; } .stream-right { right: 240px; text-align: right; }
   .data-stream .stream-inner { animation: streamScroll linear infinite; }
   @keyframes streamScroll { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+  @media (max-width: 1100px) { .data-stream { display: none; } }
 
-  .ticker { position: fixed; bottom: 0; left: 0; width: 100%; height: 24px; z-index: 6; background: var(--hud-glass); border-top: 1px solid var(--hud-border); overflow: hidden; pointer-events: none; }
-  .ticker-inner { white-space: nowrap; font-size: 11px; letter-spacing: 1px; line-height: 24px; text-shadow: 0 0 6px var(--hud-cyan); animation: tickerScroll 28s linear infinite; display: inline-block; padding-left: 100%; }
+  /* ---------- TICKER ---------- */
+  .ticker {
+    position: fixed; bottom: 0; left: 0; width: 100%; height: 24px; z-index: 6;
+    background: var(--hud-glass); border-top: 1px solid var(--hud-border);
+    overflow: hidden; pointer-events: none;
+  }
+  .ticker-inner {
+    white-space: nowrap; font-size: 11px; letter-spacing: 1px; line-height: 24px;
+    text-shadow: 0 0 6px var(--hud-cyan); animation: tickerScroll 28s linear infinite;
+    display: inline-block; padding-left: 100%;
+  }
   @keyframes tickerScroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
 
-  #diagLog { position: fixed; bottom: 34px; left: 240px; width: 250px; z-index: 5; font-size: 10px; line-height: 1.6; opacity: 0.65; pointer-events: none; }
-  .diag-line { animation: diagFade 4s ease forwards; }
-  @keyframes diagFade { 0% { opacity: 0; transform: translateX(-6px); } 10%, 80% { opacity: 1; transform: translateX(0); } 100% { opacity: 0; } }
-
-  /* ============ MODULAR HOLOGRAPHIC PANELS (DRAGGABLE) ============ */
-  .holo-panel {
-    position: fixed; top: 15%; left: 50%; transform: translateX(-50%);
-    width: min(92vw, 900px); max-height: 82vh; background: var(--hud-glass);
-    border: 1px solid var(--hud-cyan); box-shadow: 0 0 45px rgba(0,225,255,0.35), inset 0 0 25px rgba(0,225,255,0.08);
-    backdrop-filter: blur(14px); z-index: 30; padding: 20px 24px; opacity: 0; pointer-events: none;
-    transition: opacity 0.4s ease; display: flex; flex-direction: column;
+  /* ---------- DIAGNOSTIC LOG ---------- */
+  #diagLog {
+    position: fixed; bottom: 34px; left: 240px; width: 250px; z-index: 5;
+    font-size: 10px; line-height: 1.6; opacity: 0.65;
+    text-shadow: 0 0 4px var(--hud-cyan); pointer-events: none;
   }
-  .holo-panel.visible { opacity: 1; pointer-events: auto; }
+  .diag-line { animation: diagFade 4s ease forwards; }
+  @keyframes diagFade {
+    0% { opacity: 0; transform: translateX(-6px); }
+    10% { opacity: 1; transform: translateX(0); }
+    80% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  @media (max-width: 1100px) { #diagLog { display: none; } }
+
+  /* ============ MODULAR HOLOGRAPHIC PANEL SYSTEM ============
+     Any future panel (weather detail, CAD preview, satellite feed, etc.)
+     can reuse .holo-panel + the openHoloPanel()/closeHoloPanel() JS helpers -
+     just give it a unique id and build the inner HTML. */
+  .holo-panel {
+    position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%, -50%) scale(0.92);
+    width: min(92vw, 900px);
+    max-height: 82vh;
+    background: var(--hud-glass);
+    border: 1px solid var(--hud-cyan);
+    box-shadow: 0 0 45px rgba(0,225,255,0.35), inset 0 0 25px rgba(0,225,255,0.08);
+    backdrop-filter: blur(14px);
+    z-index: 30;
+    padding: 20px 24px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.45s ease, transform 0.45s ease;
+    overflow-y: auto;
+  }
+  .holo-panel.visible { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
 
   .holo-panel-header {
     display: flex; justify-content: space-between; align-items: center;
     border-bottom: 2px solid var(--hud-border); padding-bottom: 10px; margin-bottom: 14px;
-    cursor: grab;
   }
-  .holo-panel-header:active { cursor: grabbing; }
-  .holo-panel-title { font-family: 'Orbitron'; font-weight: 900; font-size: clamp(13px, 2vw, 16px); letter-spacing: 2px; color: #fff; text-shadow: 0 0 10px var(--hud-cyan); text-transform: uppercase; }
-  .holo-panel-close { font-family: 'Orbitron'; font-size: 11px; letter-spacing: 1px; border: 1px solid var(--hud-cyan); padding: 4px 10px; cursor: pointer; color: var(--hud-cyan); background: rgba(0,225,255,0.06); }
+  .holo-panel-title {
+    font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: clamp(13px, 2vw, 16px);
+    letter-spacing: 2px; color: #fff; text-shadow: 0 0 10px var(--hud-cyan);
+    text-transform: uppercase;
+  }
+  .holo-panel-close {
+    font-family: 'Orbitron', sans-serif; font-size: 11px; letter-spacing: 1px;
+    border: 1px solid var(--hud-cyan); padding: 4px 10px; cursor: pointer;
+    color: var(--hud-cyan); background: rgba(0,225,255,0.06); flex-shrink: 0;
+  }
   .holo-panel-close:hover { background: var(--hud-cyan); color: #000; }
 
-  .holo-content { overflow-y: auto; flex-grow: 1; }
-  .holo-section-label { font-family: 'Orbitron'; font-size: 10px; letter-spacing: 2px; color: var(--hud-cyan); opacity: 0.8; margin: 14px 0 6px; }
-  .holo-body-text { font-size: 13px; line-height: 1.6; color: #dfffff; word-wrap: break-word; }
+  .holo-section-label {
+    font-family: 'Orbitron', sans-serif; font-size: 10px; letter-spacing: 2px;
+    color: var(--hud-cyan); opacity: 0.8; margin: 14px 0 6px;
+  }
+  .holo-body-text { font-size: 13px; line-height: 1.6; color: #dfffff; }
   .holo-image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 8px; }
   .holo-img { width: 100%; height: 150px; object-fit: cover; border: 1px solid var(--hud-cyan); box-shadow: 0 0 10px rgba(0,225,255,0.25); background: #001122; }
   .holo-news-item { font-size: 12px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,225,255,0.15); }
-  
-  /* GLOBE SPECIFIC */
+  .holo-news-date { font-size: 10px; opacity: 0.6; margin-left: 6px; }
+
+  /* Globe panel gets a taller, map-friendly layout */
   #globePanel { width: min(94vw, 1100px); }
   #globeMapContainer {
     width: 100%; height: 55vh; min-height: 340px;
     filter: invert(100%) hue-rotate(180deg) sepia(100%) hue-rotate(140deg) saturate(400%) brightness(1.2);
-    border: 1px solid var(--hud-border); cursor: default;
+    border: 1px solid var(--hud-border);
   }
-  .marker { background-color: var(--hud-cyan); width: 20px; height: 20px; border-radius: 50%; box-shadow: 0 0 30px var(--hud-cyan), 0 0 60px #fff; animation: markerPulse 1.5s infinite; border: 2px solid #fff; }
-  @keyframes markerPulse { 0% { transform: scale(0.8); opacity: 1; } 100% { transform: scale(1.6); opacity: 0.3; } }
+  #globeInfoRow { display: flex; gap: 20px; margin-top: 12px; flex-wrap: wrap; }
+  #globeInfoRow > div { flex: 1; min-width: 200px; }
 </style>
 </head>
 <body>
@@ -151,23 +235,20 @@
 <div class="crt-overlay"></div>
 <div class="vignette"></div>
 
-<!-- BOOT SCREEN -->
 <div id="startOverlay">
   <div class="clap-ring"><div class="clap-icon">👏</div></div>
   <div id="startLabel">CLAP TO ACTIVATE</div>
   <div id="startSubLabel">or click anywhere</div>
 </div>
 
-<!-- TOP BADGE -->
 <div class="user-badge">
   <div class="dot"></div>
   <div>
-    <div class="title">JARVIS OS v2.0</div>
-    <div class="subtitle">STARK INDUSTRIES KERNEL</div>
+    <div class="title">JARVIS OS v1.1</div>
+    <div class="subtitle">PERSONAL AI SYSTEM</div>
   </div>
 </div>
 
-<!-- TELEMETRY CARDS -->
 <div class="card-stack left">
   <div class="hud-card">
     <div class="card-title">// PROCESSOR LOAD</div>
@@ -182,13 +263,13 @@
 
 <div class="card-stack right">
   <div class="hud-card">
-    <div class="card-title">// SYSTEM LINK</div>
-    <div>PROXY: PORT 5001</div>
+    <div class="card-title">// NETWORK TRAFFIC</div>
+    <div>SIGNAL: <span id="netValText">--</span></div>
   </div>
   <div class="hud-card">
     <div class="card-title">// VOICE ENGINE</div>
     <div>MODEL: LLAMA 3.2</div>
-    <div>TTS: SECURE LINK</div>
+    <div>TTS: FISH AUDIO</div>
   </div>
 </div>
 
@@ -198,7 +279,6 @@
   <div id="weatherCondition">--</div>
 </div>
 
-<!-- STATUS TEXT -->
 <div class="center-overlay-text" id="centerText">
   <div id="statusText">SYSTEM STANDBY</div>
   <div id="transcript"></div>
@@ -207,35 +287,39 @@
 <div class="data-stream stream-left"><div class="stream-inner" id="streamLeft"></div></div>
 <div class="data-stream stream-right"><div class="stream-inner" id="streamRight"></div></div>
 <div id="diagLog"></div>
-<div class="ticker"><div class="ticker-inner" id="tickerText">INITIALIZING SYSTEM ARCHITECTURE...</div></div>
+<div class="ticker"><div class="ticker-inner" id="tickerText">INITIALIZING...</div></div>
 
 <!-- ============ HOLOGRAPHIC PANELS ============ -->
 
-<!-- RESEARCH PANEL -->
+<!-- Research / factual info panel -->
 <div class="holo-panel" id="researchPanel">
-  <div class="holo-panel-header" id="researchDragHandle">
-    <div class="holo-panel-title" id="researchTitle">DATASTREAM</div>
+  <div class="holo-panel-header">
+    <div class="holo-panel-title" id="researchTitle">TOPIC</div>
     <div class="holo-panel-close" onclick="closeHoloPanel('researchPanel')">CLOSE ✕</div>
   </div>
-  <div class="holo-content">
-    <div id="researchImages" class="holo-image-grid"></div>
-    <div class="holo-section-label">// BACKGROUND SUMMARY</div>
-    <div class="holo-body-text" id="researchBackground">Retrieving secure data...</div>
-    <div class="holo-section-label" id="researchRecentLabel" style="display:none;">// RECENT DEVELOPMENTS</div>
-    <div id="researchRecent"></div>
-  </div>
+  <div id="researchImages" class="holo-image-grid"></div>
+  <div class="holo-section-label">// BACKGROUND</div>
+  <div class="holo-body-text" id="researchBackground">—</div>
+  <div class="holo-section-label" id="researchRecentLabel" style="display:none;">// RECENT DEVELOPMENTS</div>
+  <div id="researchRecent"></div>
 </div>
 
-<!-- GLOBE PANEL -->
+<!-- Globe / location panel -->
 <div class="holo-panel" id="globePanel">
-  <div class="holo-panel-header" id="globeDragHandle">
-    <div class="holo-panel-title" id="globeTitle">ORBITAL TARGETING</div>
+  <div class="holo-panel-header">
+    <div class="holo-panel-title" id="globeTitle">LOCATION</div>
     <div class="holo-panel-close" onclick="closeHoloPanel('globePanel')">CLOSE ✕</div>
   </div>
-  <div class="holo-content">
-    <div class="holo-section-label">// SATELLITE COORDINATES</div>
-    <div class="holo-body-text" id="globeCoords" style="margin-bottom: 10px; font-weight:bold;">AWAITING LINK...</div>
-    <div id="globeMapContainer"></div>
+  <div id="globeMapContainer"></div>
+  <div id="globeInfoRow">
+    <div>
+      <div class="holo-section-label">// COORDINATES</div>
+      <div class="holo-body-text" id="globeCoords">—</div>
+    </div>
+    <div>
+      <div class="holo-section-label">// DESCRIPTION</div>
+      <div class="holo-body-text" id="globeDescription">—</div>
+    </div>
   </div>
 </div>
 
@@ -243,88 +327,213 @@
   // ============ CORE STATE ============
   let currentState = "IDLE";
   let isActiveSession = false;
+  let initialized = false;
 
   const centerText = document.getElementById("centerText");
   const statusText = document.getElementById("statusText");
   const transcript = document.getElementById("transcript");
   const startOverlay = document.getElementById("startOverlay");
+  const startLabel = document.getElementById("startLabel");
 
-  // ============ AUDIO SYNTHESIS ENGINE (No 404s) ============
+  const SYSTEM_PROMPT = "You are J.A.R.V.I.S. Address the user as 'sir'. Dry British wit, polite, technically precise. Keep every answer under 30 words, no exceptions. Current year is 2026.";
+  const TTS_PROXY_URL = "http://localhost:5001/tts";
+
+  // ============ MODULAR HOLOGRAPHIC PANEL HELPERS ============
+  function openHoloPanel(id) {
+    document.querySelectorAll(".holo-panel").forEach(p => { if (p.id !== id) p.classList.remove("visible"); });
+    document.getElementById(id).classList.add("visible");
+  }
+  function closeHoloPanel(id) {
+    document.getElementById(id).classList.remove("visible");
+  }
+
+  // ============ SOUND CLIPS ============
+  function playClip(src, volume) {
+    const a = new Audio(src);
+    a.volume = volume || 0.5;
+    a.play().catch(() => {});
+  }
+  function playPing() { playClip("sfx_ping.mp3", 0.5); }
+  function playSweep() { playClip("sfx_sweep.mp3", 0.4); }
+  function playTick() { playClip("sfx_tick.mp3", 0.35); }
+
+  let chatterInterval = null;
+  function startProcessingChatter() {
+    stopProcessingChatter();
+    chatterInterval = setInterval(playTick, 160);
+  }
+  function stopProcessingChatter() {
+    if (chatterInterval) { clearInterval(chatterInterval); chatterInterval = null; }
+  }
+
   let audioCtx = null;
   function initAudioEngine() {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    
-    // Ambient Reactor Hum
-    const humGain = audioCtx.createGain();
-    humGain.gain.value = 0.01; humGain.connect(audioCtx.destination);
+    const gain = audioCtx.createGain();
+    gain.gain.value = 0.01;
+    gain.connect(audioCtx.destination);
     [55, 82.5].forEach(freq => {
       const osc = audioCtx.createOscillator();
       osc.type = "sine"; osc.frequency.value = freq;
-      osc.connect(humGain); osc.start();
+      osc.connect(gain); osc.start();
     });
   }
 
-  function playSynthesizedTick() {
-    if (!audioCtx) return;
-    const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
-    osc.type = "square"; osc.frequency.setValueAtTime(800 + Math.random() * 400, audioCtx.currentTime);
-    gain.gain.setValueAtTime(0.015, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.04);
-    osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.04);
+  // ============ CLAP-TO-WAKE ============
+  async function armClapDetector() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+
+      let lastClapTime = 0;
+      function checkClap() {
+        analyser.getByteFrequencyData(data);
+        const avg = data.reduce((a, b) => a + b, 0) / data.length;
+        const now = Date.now();
+        if (avg > 55 && now - lastClapTime > 1200) {
+          lastClapTime = now;
+          stream.getTracks().forEach(t => t.stop());
+          ctx.close();
+          bootSystem();
+          return;
+        }
+        if (startOverlay.style.display !== "none") requestAnimationFrame(checkClap);
+      }
+      checkClap();
+    } catch (err) {
+      startLabel.textContent = "MIC ACCESS DENIED - CLICK TO START";
+    }
+  }
+  startOverlay.addEventListener("click", bootSystem);
+  armClapDetector();
+
+  let bootStarted = false;
+  function bootSystem() {
+    if (bootStarted) return;
+    bootStarted = true;
+    startOverlay.style.display = "none";
+    initAudioEngine();
+    playSweep();
+    speak("Systems fully operational, sir.", () => startListening());
   }
 
-  function playSynthesizedSweep() {
-    if (!audioCtx) return;
-    const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
-    osc.type = "sawtooth"; osc.frequency.setValueAtTime(250, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.18);
-    gain.gain.setValueAtTime(0.02, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.18);
-    osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.18);
+  // ============ TTS ============
+  let jarvisVoice = null;
+  function loadVoice() {
+    const voices = speechSynthesis.getVoices();
+    jarvisVoice = voices.find(v => v.lang === "en-GB" && v.name.toLowerCase().includes("male"))
+      || voices.find(v => v.lang === "en-GB")
+      || voices.find(v => v.name.includes("Daniel"))
+      || voices[0];
+  }
+  speechSynthesis.onvoiceschanged = loadVoice;
+
+  function speakBrowserVoice(text, onComplete) {
+    const utterance = new SpeechSynthesisUtterance(text);
+    if (!jarvisVoice) loadVoice();
+    if (jarvisVoice) utterance.voice = jarvisVoice;
+    utterance.pitch = 0.9; utterance.rate = 1.02;
+    utterance.onend = () => { currentState = "IDLE"; statusText.textContent = "SYSTEM READY"; if (onComplete) onComplete(); };
+    speechSynthesis.speak(utterance);
   }
 
-  let chatterInterval = null;
-  function startProcessingChatter() { stopProcessingChatter(); chatterInterval = setInterval(playSynthesizedTick, 120); }
-  function stopProcessingChatter() { if (chatterInterval) { clearInterval(chatterInterval); chatterInterval = null; } }
-
-  // ============ DRAGGABLE PANELS ============
-  function makeDraggable(panelId, handleId) {
-    const panel = document.getElementById(panelId);
-    const handle = document.getElementById(handleId);
-    let isDragging = false, startX, startY, initX, initY;
-
-    handle.addEventListener("mousedown", (e) => {
-      isDragging = true; startX = e.clientX; startY = e.clientY;
-      const rect = panel.getBoundingClientRect();
-      initX = rect.left; initY = rect.top;
-      panel.style.transform = "none"; panel.style.left = initX + "px"; panel.style.top = initY + "px";
-    });
-    window.addEventListener("mousemove", (e) => {
-      if (!isDragging) return;
-      panel.style.left = (initX + (e.clientX - startX)) + "px"; panel.style.top = (initY + (e.clientY - startY)) + "px";
-    });
-    window.addEventListener("mouseup", () => { isDragging = false; });
-  }
-
-  makeDraggable("researchPanel", "researchDragHandle");
-  makeDraggable("globePanel", "globeDragHandle");
-
-  function openHoloPanel(id) {
-    document.querySelectorAll(".holo-panel").forEach(p => p.classList.remove("visible"));
-    const panel = document.getElementById(id);
-    panel.style.transform = "translateX(-50%)"; panel.style.left = "50%"; panel.style.top = "15%"; // Reset position
-    panel.classList.add("visible");
-  }
-  function closeHoloPanel(id) { document.getElementById(id).classList.remove("visible"); }
+  // Tracks whether we've already told the user about a broken voice link this
+  // session, so Jarvis mentions it once instead of every single reply
+  let voiceProxyIssueReported = false;
+  let voiceProxyWorking = true;
 
   function logDiagnostic(message, isWarning) {
-    const line = document.createElement("div"); line.className = "diag-line";
+    const line = document.createElement("div");
+    line.className = "diag-line";
     if (isWarning) line.style.color = "var(--hud-orange)";
-    line.textContent = message; document.getElementById("diagLog").appendChild(line);
+    line.textContent = message;
+    diagLogEl.appendChild(line);
     setTimeout(() => line.remove(), 6000);
+    while (diagLogEl.children.length > 4) diagLogEl.removeChild(diagLogEl.firstChild);
   }
 
-  // ============ 3D GLOBE ENGINE (MapLibre) ============
-  let globeMap = null;
-  let globeMarker = null;
+  async function speak(text, onComplete) {
+    currentState = "SPEAKING";
+    statusText.textContent = "AUDIO OUTPUT...";
+    transcript.textContent = "J.A.R.V.I.S.: " + text;
 
+    try {
+      const res = await fetch(TTS_PROXY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text })
+      });
+      if (!res.ok) {
+        // Self-diagnosis: read the actual reason the proxy gave, not just "it failed"
+        let reason = "unknown error";
+        try { reason = (await res.json()).error || reason; } catch (e) {}
+        voiceProxyWorking = false;
+        logDiagnostic("> voice proxy error: " + reason, true);
+        throw new Error(reason);
+      }
+      voiceProxyWorking = true;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audioEl = new Audio(url);
+      audioEl.onended = () => {
+        URL.revokeObjectURL(url);
+        currentState = "IDLE";
+        statusText.textContent = "SYSTEM READY";
+        if (onComplete) onComplete();
+      };
+      audioEl.onerror = () => speakBrowserVoice(text, onComplete);
+      audioEl.play();
+    } catch (e) {
+      // Report the issue out loud once per session, then just fall back quietly after that
+      if (!voiceProxyIssueReported) {
+        voiceProxyIssueReported = true;
+        speakBrowserVoice(text + " Also, sir - my primary voice link appears to be down, running on backup audio.", onComplete);
+      } else {
+        speakBrowserVoice(text, onComplete);
+      }
+    }
+  }
+
+  // ============ SPEECH RECOGNITION ============
+  const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const recognition = SpeechRecognitionCtor ? new SpeechRecognitionCtor() : null;
+  if (recognition) {
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+    recognition.onresult = (e) => {
+      if (currentState === "SPEAKING" || currentState === "THINKING") return;
+      const heard = e.results[e.results.length - 1][0].transcript.trim();
+      if (heard) processQuery(heard);
+    };
+    recognition.onend = () => { try { recognition.start(); } catch (e) {} };
+    recognition.onerror = () => {};
+  }
+  function startListening() {
+    if (!recognition) return;
+    currentState = "LISTENING";
+    statusText.textContent = "LISTENING...";
+    try { recognition.start(); } catch (e) {}
+  }
+
+  // ============ INTENT DETECTION ============
+  const LOCATION_PATTERN = /\b(where is|take me to|show me .* on the map|locate)\b/i;
+  const RESEARCH_PATTERN = /\b(what is|who is|tell me about|explain|show me|latest|news about)\b/i;
+
+  function extractLocationQuery(text) {
+    return text.replace(LOCATION_PATTERN, "").replace(/on the map/i, "").trim();
+  }
+  function extractResearchQuery(text) {
+    return text.replace(RESEARCH_PATTERN, "").trim();
+  }
+
+  // ---- Location panel ----
+  let globeMap = null;
   function ensureGlobeMap() {
     if (globeMap) return globeMap;
     globeMap = new maplibregl.Map({
@@ -334,221 +543,252 @@
         sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256 } },
         layers: [{ id: 'osm-layer', type: 'raster', source: 'osm', minzoom: 0, maxzoom: 19 }]
       },
-      center: [0, 20], zoom: 1.5, pitch: 0, interactive: false
+      center: [-20, 30], zoom: 1.2, pitch: 0, bearing: 0
     });
     globeMap.on('style.load', () => { try { globeMap.setProjection({ type: 'globe' }); } catch (e) {} });
     return globeMap;
   }
 
-  async function trigger3DGlobe(place) {
-    document.getElementById("globeTitle").textContent = "// TARGET: " + place;
-    document.getElementById("globeCoords").textContent = "TRIANGULATING ORBITAL POSITION...";
+  async function tryLocationIntent(question) {
+    if (!LOCATION_PATTERN.test(question)) return false;
+    const place = extractLocationQuery(question);
+    if (!place) return false;
+
+    document.getElementById("globeTitle").textContent = place.toUpperCase();
+    document.getElementById("globeCoords").textContent = "SEARCHING...";
+    document.getElementById("globeDescription").textContent = "—";
     openHoloPanel("globePanel");
 
     const map = ensureGlobeMap();
     setTimeout(() => map.resize(), 100);
-    map.jumpTo({ center: [0, 20], zoom: 1.5, pitch: 0, bearing: 0 });
+    map.jumpTo({ center: [-20, 30], zoom: 1.2, pitch: 0, bearing: 0 });
 
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`);
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}&addressdetails=1`);
       const results = await res.json();
       if (results && results.length > 0) {
-        const lat = parseFloat(results[0].lat), lon = parseFloat(results[0].lon);
-        document.getElementById("globeCoords").textContent = `LAT: ${lat.toFixed(4)}° | LON: ${lon.toFixed(4)}° - ${results[0].display_name}`;
-        
-        if (globeMarker) globeMarker.remove();
-        
-        // Cinematic Fly-To
-        map.flyTo({ center: [lon, lat], zoom: 13, pitch: 60, bearing: 30, speed: 1.4, curve: 1.3, essential: true });
-        
-        // Drop Marker
-        setTimeout(() => {
-          const el = document.createElement('div'); el.className = 'marker';
-          globeMarker = new maplibregl.Marker(el).setLngLat([lon, lat]).addTo(map);
-        }, 1800);
-
+        const lat = parseFloat(results[0].lat);
+        const lon = parseFloat(results[0].lon);
+        document.getElementById("globeTitle").textContent = results[0].display_name.split(',')[0].toUpperCase();
+        document.getElementById("globeCoords").textContent = `LAT ${lat.toFixed(4)}° / LON ${lon.toFixed(4)}°`;
+        document.getElementById("globeDescription").textContent = results[0].display_name;
+        map.flyTo({ center: [lon, lat], zoom: 13, pitch: 60, bearing: 30, speed: 1.3, curve: 1.4, essential: true });
       } else {
-        document.getElementById("globeCoords").textContent = "LOCATION UNREACHABLE";
+        document.getElementById("globeCoords").textContent = "TARGET UNREACHABLE";
       }
-    } catch (e) { document.getElementById("globeCoords").textContent = "GEOCODING ERROR"; }
+    } catch (e) {
+      document.getElementById("globeCoords").textContent = "GEOCODING ERROR";
+    }
+    return true;
   }
 
-  // ============ RESEARCH ENGINE (Hybrid Python Proxy + Client API) ============
-  async function triggerResearchPanel(topic, imagesProxy) {
-    document.getElementById("researchTitle").textContent = "// DATABASE: " + topic;
-    document.getElementById("researchBackground").textContent = "Retrieving secure files...";
+  // ---- Research panel (Wikipedia + Google News, both free/keyless) ----
+  async function tryResearchIntent(question) {
+    if (!RESEARCH_PATTERN.test(question)) return { matched: false, context: "" };
+    const topic = extractResearchQuery(question);
+    if (!topic) return { matched: false, context: "" };
+
+    document.getElementById("researchTitle").textContent = topic.toUpperCase();
+    document.getElementById("researchImages").innerHTML = "";
+    document.getElementById("researchBackground").textContent = "Retrieving background information...";
     document.getElementById("researchRecent").innerHTML = "";
     document.getElementById("researchRecentLabel").style.display = "none";
-    
-    // Load Images from Proxy
-    const imgGrid = document.getElementById("researchImages");
-    imgGrid.innerHTML = "";
-    if (imagesProxy && imagesProxy.length > 0) {
-      imgGrid.innerHTML = imagesProxy.slice(0, 4).map(url => `<img src="http://localhost:5001/api/image?url=${encodeURIComponent(url)}" class="holo-img" onerror="this.style.display='none'" />`).join("");
-    }
     openHoloPanel("researchPanel");
 
-    // Fetch Wikipedia Background Client-Side (Fast formatting)
-    try {
-      const wikiRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(topic)}`);
-      if (wikiRes.ok) {
-        const wikiData = await wikiRes.json();
-        document.getElementById("researchBackground").textContent = wikiData.extract || "No background summary found.";
-      }
-    } catch (e) {}
+    let context = "";
 
-    // Fetch RSS News Client-Side
+    // Background info + images from Wikipedia (free, no key, always current content)
+    try {
+      const searchRes = await fetch(`https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(topic)}&limit=1&namespace=0&format=json&origin=*`);
+      const searchData = await searchRes.json();
+      const title = searchData[1] && searchData[1][0];
+
+      if (title) {
+        const summaryRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`);
+        const summaryData = await summaryRes.json();
+        const extract = summaryData.extract || "No summary available.";
+        document.getElementById("researchBackground").textContent = extract;
+        context += "Background: " + extract + " ";
+
+        // Pull several real images from the page's media list
+        try {
+          const mediaRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/media-list/${encodeURIComponent(title)}`);
+          const mediaData = await mediaRes.json();
+          const imageItems = (mediaData.items || [])
+            .filter(i => i.type === "image" && i.srcset && i.srcset.length)
+            .slice(0, 6);
+          document.getElementById("researchImages").innerHTML = imageItems.map(item => {
+            const src = "https:" + item.srcset[item.srcset.length - 1].src;
+            return `<img src="${src}" class="holo-img" onerror="this.style.display='none'" />`;
+          }).join("");
+        } catch (e) {}
+      } else {
+        document.getElementById("researchBackground").textContent = "No background information found for this topic.";
+      }
+    } catch (e) {
+      document.getElementById("researchBackground").textContent = "Background lookup failed.";
+    }
+
+    // Recent developments from Google News RSS (free, no key, includes real dates)
     try {
       const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(topic)}&hl=en-US&gl=US&ceid=US:en`;
-      const newsRes = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}`);
-      if (newsRes.ok) {
-        const newsData = await newsRes.json();
-        const items = (newsData.items || []).slice(0, 3);
-        if (items.length > 0) {
-          document.getElementById("researchRecentLabel").style.display = "block";
-          document.getElementById("researchRecent").innerHTML = items.map(item => `<div class="holo-news-item">• ${item.title} <span class="holo-news-date">(${new Date(item.pubDate).toLocaleDateString()})</span></div>`).join("");
-        }
+      const bridgeUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}`;
+      const newsRes = await fetch(bridgeUrl);
+      const newsData = await newsRes.json();
+      const items = (newsData.items || []).slice(0, 4);
+
+      if (items.length > 0) {
+        document.getElementById("researchRecentLabel").style.display = "block";
+        document.getElementById("researchRecent").innerHTML = items.map(item => {
+          const date = new Date(item.pubDate).toLocaleDateString();
+          return `<div class="holo-news-item">${item.title}<span class="holo-news-date">${date}</span></div>`;
+        }).join("");
+        context += "Recent headlines: " + items.map(i => i.title).join("; ");
       }
     } catch (e) {}
+
+    return { matched: true, context };
   }
 
-  // ============ PROXY QUERY ENGINE ============
+  // ============ PERSISTENT MEMORY (via jarvis_proxy.py) ============
+  const MEMORY_URL = "http://localhost:5001/memory";
+
+  async function saveToMemory(role, text) {
+    try {
+      await fetch(MEMORY_URL + "/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role, text })
+      });
+    } catch (e) {
+      logDiagnostic("> memory save failed - is proxy running?", true);
+    }
+  }
+
+  async function recallMemory(limit) {
+    try {
+      const res = await fetch(MEMORY_URL + "/recent?limit=" + (limit || 8));
+      const data = await res.json();
+      return data.entries || [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function formatMemoryAsContext(entries) {
+    if (!entries.length) return "";
+    return "Recent conversation history: " + entries.map(e => `${e.role}: ${e.text}`).join(" | ");
+  }
+
+  // ============ QUERY PROCESSING ============
   async function processQuery(question) {
-    currentState = "THINKING"; isActiveSession = true; centerText.classList.add("active");
-    transcript.textContent = "You: " + question; statusText.textContent = "PROCESSING QUERY...";
+    currentState = "THINKING";
+    isActiveSession = true;
+    centerText.classList.add("active");
+    transcript.textContent = "You: " + question;
+    statusText.textContent = "PROCESSING QUERY...";
     startProcessingChatter();
+    saveToMemory("user", question);
+
+    const wasLocation = await tryLocationIntent(question);
+    let extraContext = "";
+    if (!wasLocation) {
+      const researchResult = await tryResearchIntent(question);
+      extraContext = researchResult.context;
+    }
+
+    const memoryEntries = await recallMemory(8);
+    const memoryContext = formatMemoryAsContext(memoryEntries);
 
     try {
-      const res = await fetch("http://localhost:5001/api/chat", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: question })
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+      const contextParts = [extraContext, memoryContext].filter(Boolean).join(" ");
+      const promptWithContext = contextParts
+        ? `${question}\n\n[Context, use if relevant: ${contextParts}]`
+        : question;
+
+      const response = await fetch("http://localhost:11434/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: "llama3.2",
+          system: SYSTEM_PROMPT,
+          prompt: promptWithContext,
+          stream: true,
+          options: { num_predict: 140 }
+        })
       });
-      if (!res.ok) throw new Error("Proxy offline");
-      
-      const data = await res.json();
-      stopProcessingChatter();
-      
-      const reply = data.response || "No response received.";
-      transcript.textContent = "J.A.R.V.I.S.: " + reply;
+      if (!response.ok) throw new Error("Ollama endpoint unreachable.");
 
-      if (data.category === "LOCATION") {
-        trigger3DGlobe(data.query_title);
-      } else if (data.category === "RESEARCH") {
-        triggerResearchPanel(data.query_title, data.images);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullResponse = "";
+      let firstChunk = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!firstChunk) { firstChunk = true; stopProcessingChatter(); statusText.textContent = "RECEIVING..."; }
+        const lines = decoder.decode(value, { stream: true }).split("\n").filter(Boolean);
+        for (const line of lines) {
+          try {
+            const json = JSON.parse(line);
+            fullResponse += json.response;
+            transcript.textContent = "J.A.R.V.I.S.: " + fullResponse;
+          } catch (e) {}
+        }
       }
-
-      speak(reply, () => { statusText.textContent = "SYSTEM ACTIVE"; centerText.classList.remove("active"); isActiveSession = false; });
+      clearTimeout(timeoutId);
+      stopProcessingChatter();
+      saveToMemory("jarvis", fullResponse);
+      speak(fullResponse, () => { statusText.textContent = "SYSTEM ACTIVE"; centerText.classList.remove("active"); isActiveSession = false; });
     } catch (err) {
       stopProcessingChatter();
-      statusText.textContent = "OFFLINE";
-      transcript.textContent = "Mainframe proxy at Port 5001 is unreachable, sir.";
-      logDiagnostic("> connection to proxy failed", true);
-      centerText.classList.remove("active"); isActiveSession = false; currentState = "IDLE";
-      speak("My apologies sir, I cannot reach the backend proxy.", () => startListening());
+      const reason = err.name === "AbortError" ? "RESPONSE TIMED OUT" : "OLLAMA ERROR";
+      statusText.textContent = reason;
+      transcript.textContent = err.message;
+      logDiagnostic("> " + reason + ": " + err.message, true);
+      centerText.classList.remove("active");
+      isActiveSession = false;
+      currentState = "IDLE";
+
+      // Self-diagnosis: tell the user what's actually wrong instead of going silent
+      const diagnosis = err.name === "AbortError"
+        ? "My apologies, sir - that request timed out. My local model may be overloaded."
+        : "Sir, I'm unable to reach my local reasoning engine. Please confirm Ollama is running.";
+      speak(diagnosis, () => startListening());
     }
   }
 
-  // ============ TTS ENGINE ============
-  let jarvisVoice = null;
-  function loadVoice() {
-    const voices = speechSynthesis.getVoices();
-    jarvisVoice = voices.find(v => v.lang === "en-GB" && v.name.toLowerCase().includes("male")) || voices[0];
+  // ============ BACKGROUND CANVAS ============
+  const bgCanvas = document.getElementById("bgCanvas");
+  const bgCtx = bgCanvas.getContext("2d");
+  const dataCanvas = document.getElementById("dataCanvas");
+  const dctx = dataCanvas.getContext("2d");
+  const reactorCanvas = document.getElementById("reactorCanvas");
+  const rctx = reactorCanvas.getContext("2d");
+
+  function resizeCanvases() {
+    [bgCanvas, dataCanvas, reactorCanvas].forEach(c => { c.width = window.innerWidth; c.height = window.innerHeight; });
   }
-  speechSynthesis.onvoiceschanged = loadVoice;
-
-  async function speak(text, onComplete) {
-    currentState = "SPEAKING"; statusText.textContent = "AUDIO OUTPUT...";
-    playSynthesizedSweep();
-
-    try {
-      const res = await fetch("http://localhost:5001/tts", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text })
-      });
-      if (!res.ok) throw new Error("TTS proxy error");
-      const blob = await res.blob();
-      const audio = new Audio(URL.createObjectURL(blob));
-      audio.onended = () => { currentState = "IDLE"; statusText.textContent = "SYSTEM READY"; if (onComplete) onComplete(); };
-      audio.play();
-    } catch (e) {
-      // Browser Fallback
-      const utt = new SpeechSynthesisUtterance(text);
-      if (!jarvisVoice) loadVoice();
-      if (jarvisVoice) utt.voice = jarvisVoice;
-      utt.pitch = 0.9; utt.rate = 1.02;
-      utt.onend = () => { currentState = "IDLE"; statusText.textContent = "SYSTEM READY"; if (onComplete) onComplete(); };
-      speechSynthesis.speak(utt);
-    }
-  }
-
-  // ============ MIC RECOGNITION ============
-  const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const recognition = SpeechRecognitionCtor ? new SpeechRecognitionCtor() : null;
-  if (recognition) {
-    recognition.continuous = false; recognition.interimResults = false; recognition.lang = "en-US";
-    recognition.onresult = (e) => {
-      if (currentState === "SPEAKING" || currentState === "THINKING") return;
-      const heard = e.results[0][0].transcript.trim();
-      if (heard) processQuery(heard);
-    };
-    recognition.onend = () => { if (currentState === "IDLE" || currentState === "LISTENING") setTimeout(startListening, 300); };
-  }
-  function startListening() {
-    if (!recognition || currentState === "SPEAKING" || currentState === "THINKING") return;
-    currentState = "LISTENING"; statusText.textContent = "LISTENING...";
-    try { recognition.start(); } catch (e) {}
-  }
-
-  // ============ CLAP WAKE ============
-  async function armClapDetector() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const source = ctx.createMediaStreamSource(stream);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 512; source.connect(analyser);
-      const data = new Uint8Array(analyser.frequencyBinCount);
-
-      let lastClapTime = 0;
-      function checkClap() {
-        analyser.getByteFrequencyData(data);
-        const avg = data.reduce((a, b) => a + b, 0) / data.length;
-        if (avg > 55 && Date.now() - lastClapTime > 1200) {
-          lastClapTime = Date.now(); stream.getTracks().forEach(t => t.stop()); ctx.close(); bootSystem(); return;
-        }
-        if (document.getElementById("startOverlay").style.display !== "none") requestAnimationFrame(checkClap);
-      }
-      checkClap();
-    } catch (err) { document.getElementById("startLabel").textContent = "MIC DENIED - CLICK"; }
-  }
-  document.getElementById("startOverlay").addEventListener("click", bootSystem);
-  armClapDetector();
-
-  let bootStarted = false;
-  function bootSystem() {
-    if (bootStarted) return;
-    bootStarted = true; document.getElementById("startOverlay").style.display = "none";
-    initAudioEngine(); playSynthesizedSweep();
-    speak("Systems fully operational, sir.", () => startListening());
-  }
-
-  // ============ BACKGROUND VISUALS ============
-  const bgCanvas = document.getElementById("bgCanvas"), bgCtx = bgCanvas.getContext("2d");
-  const dataCanvas = document.getElementById("dataCanvas"), dctx = dataCanvas.getContext("2d");
-  const reactorCanvas = document.getElementById("reactorCanvas"), rctx = reactorCanvas.getContext("2d");
-
-  function resizeCanvases() { [bgCanvas, dataCanvas, reactorCanvas].forEach(c => { c.width = window.innerWidth; c.height = window.innerHeight; }); }
-  window.addEventListener("resize", resizeCanvases); resizeCanvases();
+  window.addEventListener("resize", resizeCanvases);
+  resizeCanvases();
 
   const particles = Array.from({ length: 100 }, () => ({
     x: Math.random() * window.innerWidth, y: Math.random() * window.innerHeight,
-    size: Math.random() * 2 + 0.5, speedY: -(Math.random() * 0.9 + 0.15), driftX: (Math.random() - 0.5) * 0.3, opacity: Math.random() * 0.7 + 0.2
+    size: Math.random() * 2 + 0.5, speedY: -(Math.random() * 0.9 + 0.15),
+    driftX: (Math.random() - 0.5) * 0.3, opacity: Math.random() * 0.7 + 0.2
   }));
   let gridOffset = 0;
 
   function renderBackground() {
-    bgCtx.fillStyle = "#020813"; bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
-    bgCtx.strokeStyle = "rgba(0,225,255,0.05)"; bgCtx.lineWidth = 1; gridOffset = (gridOffset + 0.5) % 40;
+    bgCtx.fillStyle = "#020813";
+    bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+    bgCtx.strokeStyle = "rgba(0,225,255,0.05)"; bgCtx.lineWidth = 1;
+    gridOffset = (gridOffset + 0.5) % 40;
     for (let x = 0; x < bgCanvas.width; x += 40) { bgCtx.beginPath(); bgCtx.moveTo(x, 0); bgCtx.lineTo(x, bgCanvas.height); bgCtx.stroke(); }
     for (let y = gridOffset; y < bgCanvas.height; y += 40) { bgCtx.beginPath(); bgCtx.moveTo(0, y); bgCtx.lineTo(bgCanvas.width, y); bgCtx.stroke(); }
     particles.forEach(p => {
@@ -562,7 +802,10 @@
   }
   renderBackground();
 
-  const dataPanels = [{ x: 0.08, y: 0.62, w: 150, h: 60, kind: "bars" }, { x: 0.84, y: 0.62, w: 150, h: 60, kind: "wave" }];
+  const dataPanels = [
+    { x: 0.08, y: 0.62, w: 150, h: 60, kind: "bars" },
+    { x: 0.84, y: 0.62, w: 150, h: 60, kind: "wave" }
+  ];
   function renderDataLayer() {
     dctx.clearRect(0, 0, dataCanvas.width, dataCanvas.height);
     const mainColor = isActiveSession ? "#ff3300" : "#00e1ff";
@@ -586,7 +829,8 @@
         dctx.stroke();
       }
     });
-    dctx.globalAlpha = 1; requestAnimationFrame(renderDataLayer);
+    dctx.globalAlpha = 1;
+    requestAnimationFrame(renderDataLayer);
   }
   renderDataLayer();
 
@@ -598,42 +842,64 @@
     angle1 += 0.003 * mult; angle2 -= 0.006 * mult;
     const mainColor = isActiveSession ? "#ff3300" : "#00e1ff";
 
-    rctx.save(); rctx.translate(cx, cy); rctx.rotate(angle1);
+    rctx.save(); rctx.translate(cx, cy);
+    rctx.rotate(angle1);
     rctx.strokeStyle = mainColor; rctx.globalAlpha = 0.35; rctx.lineWidth = 8; rctx.setLineDash([16, 10]);
     rctx.beginPath(); rctx.arc(0, 0, 200, 0, Math.PI * 2); rctx.stroke();
-    rctx.rotate(angle2); rctx.globalAlpha = 0.55; rctx.lineWidth = 2; rctx.setLineDash([]);
+
+    rctx.rotate(angle2);
+    rctx.globalAlpha = 0.55; rctx.lineWidth = 2; rctx.setLineDash([]);
     for (let i = 0; i < 36; i++) {
       const a = (i * Math.PI * 2) / 36;
-      rctx.beginPath(); rctx.moveTo(Math.cos(a) * 172, Math.sin(a) * 172); rctx.lineTo(Math.cos(a) * 184, Math.sin(a) * 184); rctx.stroke();
+      rctx.beginPath();
+      rctx.moveTo(Math.cos(a) * 172, Math.sin(a) * 172);
+      rctx.lineTo(Math.cos(a) * 184, Math.sin(a) * 184);
+      rctx.stroke();
     }
-    const rTri = 105; rctx.globalAlpha = 0.9; rctx.lineWidth = 4; rctx.strokeStyle = mainColor; rctx.beginPath();
+
+    const rTri = 105;
+    rctx.globalAlpha = 0.9; rctx.lineWidth = 4; rctx.strokeStyle = mainColor;
+    rctx.beginPath();
     for (let i = 0; i < 3; i++) {
       const a = (i * Math.PI * 2) / 3 - Math.PI / 2;
       const x = Math.cos(a) * rTri, y = Math.sin(a) * rTri;
       if (i === 0) rctx.moveTo(x, y); else rctx.lineTo(x, y);
     }
     rctx.closePath(); rctx.stroke();
+
     const grad = rctx.createRadialGradient(0, 0, 10, 0, 0, 125);
-    grad.addColorStop(0, mainColor); grad.addColorStop(0.7, isActiveSession ? "rgba(255,51,0,0.15)" : "rgba(0,119,255,0.15)"); grad.addColorStop(1, "transparent");
+    grad.addColorStop(0, mainColor);
+    grad.addColorStop(0.7, isActiveSession ? "rgba(255,51,0,0.15)" : "rgba(0,119,255,0.15)");
+    grad.addColorStop(1, "transparent");
     rctx.fillStyle = grad; rctx.globalAlpha = 1; rctx.fill();
-    rctx.restore(); requestAnimationFrame(renderReactor);
+    rctx.restore();
+    requestAnimationFrame(renderReactor);
   }
   renderReactor();
 
-  // ============ TELEMETRY ============
+  // ============ SIMULATED TELEMETRY ============
   let simState = { cpu: 40, mem: 55, net: 70 };
   setInterval(() => {
-    Object.keys(simState).forEach(k => { simState[k] += (Math.random() - 0.5) * 10; simState[k] = Math.max(15, Math.min(98, simState[k])); });
-    document.getElementById("cpuValText").textContent = Math.round(simState.cpu) + "%"; document.getElementById("memValText").textContent = Math.round(simState.mem) + "%";
+    Object.keys(simState).forEach(k => {
+      simState[k] += (Math.random() - 0.5) * 10;
+      simState[k] = Math.max(15, Math.min(98, simState[k]));
+    });
+    document.getElementById("cpuValText").textContent = Math.round(simState.cpu) + "%";
+    document.getElementById("memValText").textContent = Math.round(simState.mem) + "%";
+    document.getElementById("netValText").textContent = Math.round(simState.net) + "%";
   }, 1800);
 
-  const cpuGraphCanvas = document.getElementById("cpuGraphCanvas"), cgctx = cpuGraphCanvas.getContext("2d");
+  const cpuGraphCanvas = document.getElementById("cpuGraphCanvas");
+  const cgctx = cpuGraphCanvas.getContext("2d");
   let cpuGraphData = Array.from({ length: 40 }, () => 40);
   setInterval(() => {
     cpuGraphData.shift(); cpuGraphData.push(simState.cpu);
-    cgctx.clearRect(0, 0, 210, 28); cgctx.strokeStyle = "#00e1ff"; cgctx.lineWidth = 1.5; cgctx.beginPath();
+    cgctx.clearRect(0, 0, 210, 28);
+    cgctx.strokeStyle = "#00e1ff"; cgctx.lineWidth = 1.5;
+    cgctx.beginPath();
     for (let i = 0; i < cpuGraphData.length; i++) {
-      const x = (i / cpuGraphData.length) * 210, y = 28 - (cpuGraphData[i] / 100) * 28;
+      const x = (i / cpuGraphData.length) * 210;
+      const y = 28 - (cpuGraphData[i] / 100) * 28;
       if (i === 0) cgctx.moveTo(x, y); else cgctx.lineTo(x, y);
     }
     cgctx.stroke();
@@ -641,29 +907,69 @@
 
   // ============ WEATHER ============
   async function fetchWeather() {
-    if (!navigator.geolocation) return;
+    if (!navigator.geolocation) { document.getElementById("weatherLocation").textContent = "GEOLOCATION UNAVAILABLE"; return; }
     navigator.geolocation.getCurrentPosition(async (pos) => {
+      const latitude = pos.coords.latitude, longitude = pos.coords.longitude;
       try {
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${pos.coords.latitude}&longitude=${pos.coords.longitude}&current=temperature_2m,weather_code&temperature_unit=fahrenheit`;
-        const data = await (await fetch(url)).json();
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code&temperature_unit=fahrenheit`;
+        const res = await fetch(url);
+        const data = await res.json();
         document.getElementById("weatherTemp").textContent = Math.round(data.current.temperature_2m) + "°F";
-        const wCodes = {0:"CLEAR", 1:"PARTLY CLOUDY", 2:"CLOUDY", 3:"OVERCAST", 45:"FOG", 61:"RAIN", 71:"SNOW", 95:"STORM"};
-        document.getElementById("weatherCondition").textContent = wCodes[data.current.weather_code] || "ACTIVE";
-        document.getElementById("weatherLocation").textContent = `LAT ${pos.coords.latitude.toFixed(2)} / LON ${pos.coords.longitude.toFixed(2)}`;
-      } catch (e) {}
-    });
+        document.getElementById("weatherCondition").textContent = weatherCodeToText(data.current.weather_code);
+        document.getElementById("weatherLocation").textContent = `LAT ${latitude.toFixed(2)} / LON ${longitude.toFixed(2)}`;
+      } catch (e) { document.getElementById("weatherLocation").textContent = "WEATHER FEED ERROR"; }
+    }, () => { document.getElementById("weatherLocation").textContent = "LOCATION ACCESS DENIED"; });
   }
-  fetchWeather(); setInterval(fetchWeather, 600000);
+  function weatherCodeToText(code) {
+    if (code === 0) return "CLEAR SKY";
+    if (code <= 3) return "PARTLY CLOUDY";
+    if (code <= 48) return "FOG";
+    if (code <= 67) return "RAIN";
+    if (code <= 77) return "SNOW";
+    if (code <= 82) return "SHOWERS";
+    return "THUNDERSTORM";
+  }
+  fetchWeather();
+  setInterval(fetchWeather, 10 * 60 * 1000);
 
-  // ============ UI DECORATIONS ============
-  function randomHexLine() { let l = ""; for (let i=0; i<6; i++) l += Math.floor(Math.random()*256).toString(16).padStart(2,"0").toUpperCase()+" "; return l; }
-  function buildStream(el) { let c = ""; for (let i=0; i<40; i++) c += randomHexLine() + "<br>"; el.innerHTML = c + c; }
-  setInterval(() => { buildStream(document.getElementById("streamLeft")); buildStream(document.getElementById("streamRight")); }, 6000);
-  buildStream(document.getElementById("streamLeft")); buildStream(document.getElementById("streamRight"));
-  document.getElementById("streamLeft").style.animationDuration = "18s"; document.getElementById("streamRight").style.animationDuration = "22s";
+  // ============ HEX STREAMS ============
+  function randomHexLine() {
+    let line = "";
+    for (let i = 0; i < 6; i++) line += Math.floor(Math.random() * 256).toString(16).padStart(2, "0").toUpperCase() + " ";
+    return line;
+  }
+  function buildStream(el, lines) {
+    let content = "";
+    for (let i = 0; i < lines; i++) content += randomHexLine() + "<br>";
+    el.innerHTML = content + content;
+  }
+  const streamLeftEl = document.getElementById("streamLeft");
+  const streamRightEl = document.getElementById("streamRight");
+  buildStream(streamLeftEl, 40); buildStream(streamRightEl, 40);
+  streamLeftEl.style.animationDuration = "18s";
+  streamRightEl.style.animationDuration = "22s";
+  setInterval(() => { buildStream(streamLeftEl, 40); buildStream(streamRightEl, 40); }, 6000);
 
-  const diagMessages = ["> scanning subsystems...", "> memory buffer synced", "> voice channel stable", "> thermal levels nominal", "> latency: 42ms"];
-  setInterval(() => { logDiagnostic(diagMessages[Math.floor(Math.random() * diagMessages.length)]); }, 1500);
+  // ============ TICKER ============
+  const tickerMessages = ["ALL SYSTEMS NOMINAL", "NETWORK INTEGRITY 100%", "OLLAMA LINK STABLE",
+    "MEMORY BUFFER OPTIMAL", "AWAITING VOICE COMMAND", "AUDIO INPUT CALIBRATED", "SECURITY PROTOCOLS ACTIVE"];
+  const tickerEl = document.getElementById("tickerText");
+  function refreshTicker() { tickerEl.textContent = [...tickerMessages].sort(() => Math.random() - 0.5).join("   //   "); }
+  refreshTicker();
+  setInterval(refreshTicker, 15000);
+
+  // ============ DIAGNOSTIC LOG ============
+  const diagMessages = ["> scanning subsystems...", "> memory buffer synced", "> voice channel stable",
+    "> thermal levels nominal", "> network handshake OK", "> parsing input stream", "> latency: 42ms"];
+  const diagLogEl = document.getElementById("diagLog");
+  setInterval(() => {
+    const line = document.createElement("div");
+    line.className = "diag-line";
+    line.textContent = diagMessages[Math.floor(Math.random() * diagMessages.length)];
+    diagLogEl.appendChild(line);
+    setTimeout(() => line.remove(), 4000);
+    while (diagLogEl.children.length > 4) diagLogEl.removeChild(diagLogEl.firstChild);
+  }, 1500);
 </script>
 </body>
 </html>
