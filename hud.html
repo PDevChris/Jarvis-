@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+<title>J.A.R.V.I.S. Terminal</title>
+<style>
+  :root {
+    --hud-cyan: #00e1ff;
+    --hud-orange: #ff3300;
+    --hud-bg: #020813;
+    --hud-glass: rgba(1, 12, 28, 0.85);
+    --hud-border: rgba(0, 225, 255, 0.3);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--hud-bg); height: 100vh; width: 100vw; overflow: hidden;
+    font-family: 'Share Tech Mono', monospace; color: var(--hud-cyan);
+    cursor: pointer; user-select: none;
+  }
+  canvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; }
+  #bgCanvas { z-index: 1; }
+  #dataCanvas { z-index: 2; pointer-events: none; }
+  #reactorCanvas { z-index: 3; pointer-events: none; }
+
+  .crt-overlay {
+    position: fixed; inset: 0; z-index: 4; pointer-events: none;
+    background: linear-gradient(rgba(18,16,16,0) 50%, rgba(0,0,0,0.28) 50%),
+                linear-gradient(90deg, rgba(255,0,0,0.02), rgba(0,255,0,0.01), rgba(0,0,255,0.02));
+    background-size: 100% 3px, 6px 100%;
+  }
+  .vignette {
+    position: fixed; inset: 0; z-index: 4; pointer-events: none;
+    background: radial-gradient(circle at center, transparent 30%, rgba(2,8,19,0.95) 92%);
+  }
+
+  /* ---------- CLAP-TO-WAKE ---------- */
+  #startOverlay {
+    position: fixed; inset: 0; z-index: 50; background: rgba(1,6,17,0.96);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .clap-ring {
+    width: clamp(110px, 18vw, 160px); height: clamp(110px, 18vw, 160px);
+    border: 2px solid var(--hud-cyan); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 25px rgba(0,225,255,0.25); animation: clapPulse 2.2s ease-in-out infinite;
+    margin-bottom: 24px;
+  }
+  @keyframes clapPulse {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 25px rgba(0,225,255,0.25); }
+    50% { transform: scale(1.06); box-shadow: 0 0 40px rgba(0,225,255,0.45); }
+  }
+  .clap-icon { font-size: clamp(28px, 5vw, 40px); }
+  #startLabel { font-family: 'Orbitron', sans-serif; font-size: clamp(11px, 2vw, 13px); letter-spacing: 3px; text-align: center; margin-bottom: 8px; }
+  #startSubLabel { font-size: 10px; opacity: 0.6; letter-spacing: 1px; }
+
+  /* ---------- HUD ELEMENTS ---------- */
+  .user-badge {
+    position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 5;
+    background: var(--hud-glass); border: 1px solid var(--hud-border);
+    padding: 6px 16px; display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 0 15px rgba(0,225,255,0.15); font-family: 'Orbitron', monospace; pointer-events: none;
+  }
+  .user-badge .dot { width: 8px; height: 8px; background: var(--hud-cyan); border-radius: 50%; box-shadow: 0 0 8px var(--hud-cyan); animation: blinkDot 1.4s ease-in-out infinite; }
+  @keyframes blinkDot { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
+  .user-badge .title { font-size: 10px; font-weight: bold; letter-spacing: 1px; }
+  .user-badge .subtitle { font-size: 8px; opacity: 0.7; }
+
+  .card-stack { position: fixed; top: 70px; width: 210px; z-index: 5; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+  .card-stack.left { left: 16px; } .card-stack.right { right: 16px; text-align: right; }
+  .hud-card { background: var(--hud-glass); border: 1px solid var(--hud-border); padding: 8px 10px; font-size: 9px; line-height: 1.5; box-shadow: inset 0 0 10px rgba(0,225,255,0.05); }
+  .card-title { font-family: 'Orbitron'; font-size: 9px; font-weight: bold; border-bottom: 1px solid var(--hud-border); padding-bottom: 3px; margin-bottom: 5px; letter-spacing: 1px; opacity: 0.9; }
+  .mini-graph { width: 100%; height: 28px; margin-top: 4px; }
+
+  #weatherWidget { position: fixed; top: 70px; right: 16px; z-index: 5; font-size: 11px; text-align: right; line-height: 1.5; letter-spacing: 1px; pointer-events: none; text-shadow: 0 0 6px var(--hud-cyan); }
+  #weatherWidget .temp-value { font-size: 18px; font-weight: bold; }
+  
+  @media (max-width: 1100px) { .card-stack, #weatherWidget, .data-stream, #diagLog { display: none; } }
+
+  /* ---------- CENTER STATUS TEXT ---------- */
+  .center-overlay-text {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, clamp(140px, 22vh, 210px));
+    z-index: 6; text-align: center; pointer-events: none; width: min(90vw, 550px);
+  }
+  #statusText { font-size: clamp(10px, 1.4vw, 12px); letter-spacing: 3px; font-family: 'Orbitron'; text-transform: uppercase; text-shadow: 0 0 6px var(--hud-cyan); }
+  #transcript { font-size: clamp(12px, 1.8vw, 14px); margin-top: 8px; opacity: 0.95; line-height: 1.6; word-wrap: break-word; text-shadow: 0 0 8px var(--hud-cyan); }
+  .center-overlay-text.active #statusText, .center-overlay-text.active #transcript { color: var(--hud-orange); text-shadow: 0 0 8px var(--hud-orange); }
+
+  /* ---------- DECORATIONS ---------- */
+  .data-stream { position: fixed; top: 0; width: 90px; height: 100vh; overflow: hidden; z-index: 2; pointer-events: none; font-size: 10px; line-height: 1.5; opacity: 0.25; text-shadow: 0 0 4px var(--hud-cyan); }
+  .stream-left { left: 240px; } .stream-right { right: 240px; text-align: right; }
+  .data-stream .stream-inner { animation: streamScroll linear infinite; }
+  @keyframes streamScroll { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+
+  .ticker { position: fixed; bottom: 0; left: 0; width: 100%; height: 24px; z-index: 6; background: var(--hud-glass); border-top: 1px solid var(--hud-border); overflow: hidden; pointer-events: none; }
+  .ticker-inner { white-space: nowrap; font-size: 11px; letter-spacing: 1px; line-height: 24px; text-shadow: 0 0 6px var(--hud-cyan); animation: tickerScroll 28s linear infinite; display: inline-block; padding-left: 100%; }
+  @keyframes tickerScroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+
+  #diagLog { position: fixed; bottom: 34px; left: 240px; width: 250px; z-index: 5; font-size: 10px; line-height: 1.6; opacity: 0.65; pointer-events: none; }
+  .diag-line { animation: diagFade 4s ease forwards; }
+  @keyframes diagFade { 0% { opacity: 0; transform: translateX(-6px); } 10%, 80% { opacity: 1; transform: translateX(0); } 100% { opacity: 0; } }
+
+  /* ============ MODULAR HOLOGRAPHIC PANELS (DRAGGABLE) ============ */
+  .holo-panel {
+    position: fixed; top: 15%; left: 50%; transform: translateX(-50%);
+    width: min(92vw, 900px); max-height: 82vh; background: var(--hud-glass);
+    border: 1px solid var(--hud-cyan); box-shadow: 0 0 45px rgba(0,225,255,0.35), inset 0 0 25px rgba(0,225,255,0.08);
+    backdrop-filter: blur(14px); z-index: 30; padding: 20px 24px; opacity: 0; pointer-events: none;
+    transition: opacity 0.4s ease; display: flex; flex-direction: column;
+  }
+  .holo-panel.visible { opacity: 1; pointer-events: auto; }
+
+  .holo-panel-header {
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 2px solid var(--hud-border); padding-bottom: 10px; margin-bottom: 14px;
+    cursor: grab;
+  }
+  .holo-panel-header:active { cursor: grabbing; }
+  .holo-panel-title { font-family: 'Orbitron'; font-weight: 900; font-size: clamp(13px, 2vw, 16px); letter-spacing: 2px; color: #fff; text-shadow: 0 0 10px var(--hud-cyan); text-transform: uppercase; }
+  .holo-panel-close { font-family: 'Orbitron'; font-size: 11px; letter-spacing: 1px; border: 1px solid var(--hud-cyan); padding: 4px 10px; cursor: pointer; color: var(--hud-cyan); background: rgba(0,225,255,0.06); }
+  .holo-panel-close:hover { background: var(--hud-cyan); color: #000; }
+
+  .holo-content { overflow-y: auto; flex-grow: 1; }
+  .holo-section-label { font-family: 'Orbitron'; font-size: 10px; letter-spacing: 2px; color: var(--hud-cyan); opacity: 0.8; margin: 14px 0 6px; }
+  .holo-body-text { font-size: 13px; line-height: 1.6; color: #dfffff; word-wrap: break-word; }
+  .holo-image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 8px; }
+  .holo-img { width: 100%; height: 150px; object-fit: cover; border: 1px solid var(--hud-cyan); box-shadow: 0 0 10px rgba(0,225,255,0.25); background: #001122; }
+  .holo-news-item { font-size: 12px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,225,255,0.15); }
+  
+  /* GLOBE SPECIFIC */
+  #globePanel { width: min(94vw, 1100px); }
+  #globeMapContainer {
+    width: 100%; height: 55vh; min-height: 340px;
+    filter: invert(100%) hue-rotate(180deg) sepia(100%) hue-rotate(140deg) saturate(400%) brightness(1.2);
+    border: 1px solid var(--hud-border); cursor: default;
+  }
+  .marker { background-color: var(--hud-cyan); width: 20px; height: 20px; border-radius: 50%; box-shadow: 0 0 30px var(--hud-cyan), 0 0 60px #fff; animation: markerPulse 1.5s infinite; border: 2px solid #fff; }
+  @keyframes markerPulse { 0% { transform: scale(0.8); opacity: 1; } 100% { transform: scale(1.6); opacity: 0.3; } }
+</style>
+</head>
+<body>
+
+<canvas id="bgCanvas"></canvas>
+<canvas id="dataCanvas"></canvas>
+<canvas id="reactorCanvas"></canvas>
+<div class="crt-overlay"></div>
+<div class="vignette"></div>
+
+<!-- BOOT SCREEN -->
+<div id="startOverlay">
+  <div class="clap-ring"><div class="clap-icon">👏</div></div>
+  <div id="startLabel">CLAP TO ACTIVATE</div>
+  <div id="startSubLabel">or click anywhere</div>
+</div>
+
+<!-- TOP BADGE -->
+<div class="user-badge">
+  <div class="dot"></div>
+  <div>
+    <div class="title">JARVIS OS v2.0</div>
+    <div class="subtitle">STARK INDUSTRIES KERNEL</div>
+  </div>
+</div>
+
+<!-- TELEMETRY CARDS -->
+<div class="card-stack left">
+  <div class="hud-card">
+    <div class="card-title">// PROCESSOR LOAD</div>
+    <div>USAGE: <span id="cpuValText">--</span></div>
+    <canvas class="mini-graph" id="cpuGraphCanvas" width="210" height="28"></canvas>
+  </div>
+  <div class="hud-card">
+    <div class="card-title">// MEMORY BUFFER</div>
+    <div>USED: <span id="memValText">--</span></div>
+  </div>
+</div>
+
+<div class="card-stack right">
+  <div class="hud-card">
+    <div class="card-title">// SYSTEM LINK</div>
+    <div>PROXY: PORT 5001</div>
+  </div>
+  <div class="hud-card">
+    <div class="card-title">// VOICE ENGINE</div>
+    <div>MODEL: LLAMA 3.2</div>
+    <div>TTS: SECURE LINK</div>
+  </div>
+</div>
+
+<div id="weatherWidget">
+  <div id="weatherLocation">LOCATING...</div>
+  <div class="temp-value" id="weatherTemp">--°</div>
+  <div id="weatherCondition">--</div>
+</div>
+
+<!-- STATUS TEXT -->
+<div class="center-overlay-text" id="centerText">
+  <div id="statusText">SYSTEM STANDBY</div>
+  <div id="transcript"></div>
+</div>
+
+<div class="data-stream stream-left"><div class="stream-inner" id="streamLeft"></div></div>
+<div class="data-stream stream-right"><div class="stream-inner" id="streamRight"></div></div>
+<div id="diagLog"></div>
+<div class="ticker"><div class="ticker-inner" id="tickerText">INITIALIZING SYSTEM ARCHITECTURE...</div></div>
+
+<!-- ============ HOLOGRAPHIC PANELS ============ -->
+
+<!-- RESEARCH PANEL -->
+<div class="holo-panel" id="researchPanel">
+  <div class="holo-panel-header" id="researchDragHandle">
+    <div class="holo-panel-title" id="researchTitle">DATASTREAM</div>
+    <div class="holo-panel-close" onclick="closeHoloPanel('researchPanel')">CLOSE ✕</div>
+  </div>
+  <div class="holo-content">
+    <div id="researchImages" class="holo-image-grid"></div>
+    <div class="holo-section-label">// BACKGROUND SUMMARY</div>
+    <div class="holo-body-text" id="researchBackground">Retrieving secure data...</div>
+    <div class="holo-section-label" id="researchRecentLabel" style="display:none;">// RECENT DEVELOPMENTS</div>
+    <div id="researchRecent"></div>
+  </div>
+</div>
+
+<!-- GLOBE PANEL -->
+<div class="holo-panel" id="globePanel">
+  <div class="holo-panel-header" id="globeDragHandle">
+    <div class="holo-panel-title" id="globeTitle">ORBITAL TARGETING</div>
+    <div class="holo-panel-close" onclick="closeHoloPanel('globePanel')">CLOSE ✕</div>
+  </div>
+  <div class="holo-content">
+    <div class="holo-section-label">// SATELLITE COORDINATES</div>
+    <div class="holo-body-text" id="globeCoords" style="margin-bottom: 10px; font-weight:bold;">AWAITING LINK...</div>
+    <div id="globeMapContainer"></div>
+  </div>
+</div>
+
+<script>
+  // ============ CORE STATE ============
+  let currentState = "IDLE";
+  let isActiveSession = false;
+
+  const centerText = document.getElementById("centerText");
+  const statusText = document.getElementById("statusText");
+  const transcript = document.getElementById("transcript");
+  const startOverlay = document.getElementById("startOverlay");
+
+  // ============ AUDIO SYNTHESIS ENGINE (No 404s) ============
+  let audioCtx = null;
+  function initAudioEngine() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Ambient Reactor Hum
+    const humGain = audioCtx.createGain();
+    humGain.gain.value = 0.01; humGain.connect(audioCtx.destination);
+    [55, 82.5].forEach(freq => {
+      const osc = audioCtx.createOscillator();
+      osc.type = "sine"; osc.frequency.value = freq;
+      osc.connect(humGain); osc.start();
+    });
+  }
+
+  function playSynthesizedTick() {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+    osc.type = "square"; osc.frequency.setValueAtTime(800 + Math.random() * 400, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.015, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.04);
+    osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.04);
+  }
+
+  function playSynthesizedSweep() {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+    osc.type = "sawtooth"; osc.frequency.setValueAtTime(250, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.18);
+    gain.gain.setValueAtTime(0.02, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.18);
+    osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.18);
+  }
+
+  let chatterInterval = null;
+  function startProcessingChatter() { stopProcessingChatter(); chatterInterval = setInterval(playSynthesizedTick, 120); }
+  function stopProcessingChatter() { if (chatterInterval) { clearInterval(chatterInterval); chatterInterval = null; } }
+
+  // ============ DRAGGABLE PANELS ============
+  function makeDraggable(panelId, handleId) {
+    const panel = document.getElementById(panelId);
+    const handle = document.getElementById(handleId);
+    let isDragging = false, startX, startY, initX, initY;
+
+    handle.addEventListener("mousedown", (e) => {
+      isDragging = true; startX = e.clientX; startY = e.clientY;
+      const rect = panel.getBoundingClientRect();
+      initX = rect.left; initY = rect.top;
+      panel.style.transform = "none"; panel.style.left = initX + "px"; panel.style.top = initY + "px";
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!isDragging) return;
+      panel.style.left = (initX + (e.clientX - startX)) + "px"; panel.style.top = (initY + (e.clientY - startY)) + "px";
+    });
+    window.addEventListener("mouseup", () => { isDragging = false; });
+  }
+
+  makeDraggable("researchPanel", "researchDragHandle");
+  makeDraggable("globePanel", "globeDragHandle");
+
+  function openHoloPanel(id) {
+    document.querySelectorAll(".holo-panel").forEach(p => p.classList.remove("visible"));
+    const panel = document.getElementById(id);
+    panel.style.transform = "translateX(-50%)"; panel.style.left = "50%"; panel.style.top = "15%"; // Reset position
+    panel.classList.add("visible");
+  }
+  function closeHoloPanel(id) { document.getElementById(id).classList.remove("visible"); }
+
+  function logDiagnostic(message, isWarning) {
+    const line = document.createElement("div"); line.className = "diag-line";
+    if (isWarning) line.style.color = "var(--hud-orange)";
+    line.textContent = message; document.getElementById("diagLog").appendChild(line);
+    setTimeout(() => line.remove(), 6000);
+  }
+
+  // ============ 3D GLOBE ENGINE (MapLibre) ============
+  let globeMap = null;
+  let globeMarker = null;
+
+  function ensureGlobeMap() {
+    if (globeMap) return globeMap;
+    globeMap = new maplibregl.Map({
+      container: 'globeMapContainer',
+      style: {
+        version: 8,
+        sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256 } },
+        layers: [{ id: 'osm-layer', type: 'raster', source: 'osm', minzoom: 0, maxzoom: 19 }]
+      },
+      center: [0, 20], zoom: 1.5, pitch: 0, interactive: false
+    });
+    globeMap.on('style.load', () => { try { globeMap.setProjection({ type: 'globe' }); } catch (e) {} });
+    return globeMap;
+  }
+
+  async function trigger3DGlobe(place) {
+    document.getElementById("globeTitle").textContent = "// TARGET: " + place;
+    document.getElementById("globeCoords").textContent = "TRIANGULATING ORBITAL POSITION...";
+    openHoloPanel("globePanel");
+
+    const map = ensureGlobeMap();
+    setTimeout(() => map.resize(), 100);
+    map.jumpTo({ center: [0, 20], zoom: 1.5, pitch: 0, bearing: 0 });
+
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`);
+      const results = await res.json();
+      if (results && results.length > 0) {
+        const lat = parseFloat(results[0].lat), lon = parseFloat(results[0].lon);
+        document.getElementById("globeCoords").textContent = `LAT: ${lat.toFixed(4)}° | LON: ${lon.toFixed(4)}° - ${results[0].display_name}`;
+        
+        if (globeMarker) globeMarker.remove();
+        
+        // Cinematic Fly-To
+        map.flyTo({ center: [lon, lat], zoom: 13, pitch: 60, bearing: 30, speed: 1.4, curve: 1.3, essential: true });
+        
+        // Drop Marker
+        setTimeout(() => {
+          const el = document.createElement('div'); el.className = 'marker';
+          globeMarker = new maplibregl.Marker(el).setLngLat([lon, lat]).addTo(map);
+        }, 1800);
+
+      } else {
+        document.getElementById("globeCoords").textContent = "LOCATION UNREACHABLE";
+      }
+    } catch (e) { document.getElementById("globeCoords").textContent = "GEOCODING ERROR"; }
+  }
+
+  // ============ RESEARCH ENGINE (Hybrid Python Proxy + Client API) ============
+  async function triggerResearchPanel(topic, imagesProxy) {
+    document.getElementById("researchTitle").textContent = "// DATABASE: " + topic;
+    document.getElementById("researchBackground").textContent = "Retrieving secure files...";
+    document.getElementById("researchRecent").innerHTML = "";
+    document.getElementById("researchRecentLabel").style.display = "none";
+    
+    // Load Images from Proxy
+    const imgGrid = document.getElementById("researchImages");
+    imgGrid.innerHTML = "";
+    if (imagesProxy && imagesProxy.length > 0) {
+      imgGrid.innerHTML = imagesProxy.slice(0, 4).map(url => `<img src="http://localhost:5001/api/image?url=${encodeURIComponent(url)}" class="holo-img" onerror="this.style.display='none'" />`).join("");
+    }
+    openHoloPanel("researchPanel");
+
+    // Fetch Wikipedia Background Client-Side (Fast formatting)
+    try {
+      const wikiRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(topic)}`);
+      if (wikiRes.ok) {
+        const wikiData = await wikiRes.json();
+        document.getElementById("researchBackground").textContent = wikiData.extract || "No background summary found.";
+      }
+    } catch (e) {}
+
+    // Fetch RSS News Client-Side
+    try {
+      const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(topic)}&hl=en-US&gl=US&ceid=US:en`;
+      const newsRes = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}`);
+      if (newsRes.ok) {
+        const newsData = await newsRes.json();
+        const items = (newsData.items || []).slice(0, 3);
+        if (items.length > 0) {
+          document.getElementById("researchRecentLabel").style.display = "block";
+          document.getElementById("researchRecent").innerHTML = items.map(item => `<div class="holo-news-item">• ${item.title} <span class="holo-news-date">(${new Date(item.pubDate).toLocaleDateString()})</span></div>`).join("");
+        }
+      }
+    } catch (e) {}
+  }
+
+  // ============ PROXY QUERY ENGINE ============
+  async function processQuery(question) {
+    currentState = "THINKING"; isActiveSession = true; centerText.classList.add("active");
+    transcript.textContent = "You: " + question; statusText.textContent = "PROCESSING QUERY...";
+    startProcessingChatter();
+
+    try {
+      const res = await fetch("http://localhost:5001/api/chat", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: question })
+      });
+      if (!res.ok) throw new Error("Proxy offline");
+      
+      const data = await res.json();
+      stopProcessingChatter();
+      
+      const reply = data.response || "No response received.";
+      transcript.textContent = "J.A.R.V.I.S.: " + reply;
+
+      if (data.category === "LOCATION") {
+        trigger3DGlobe(data.query_title);
+      } else if (data.category === "RESEARCH") {
+        triggerResearchPanel(data.query_title, data.images);
+      }
+
+      speak(reply, () => { statusText.textContent = "SYSTEM ACTIVE"; centerText.classList.remove("active"); isActiveSession = false; });
+    } catch (err) {
+      stopProcessingChatter();
+      statusText.textContent = "OFFLINE";
+      transcript.textContent = "Mainframe proxy at Port 5001 is unreachable, sir.";
+      logDiagnostic("> connection to proxy failed", true);
+      centerText.classList.remove("active"); isActiveSession = false; currentState = "IDLE";
+      speak("My apologies sir, I cannot reach the backend proxy.", () => startListening());
+    }
+  }
+
+  // ============ TTS ENGINE ============
+  let jarvisVoice = null;
+  function loadVoice() {
+    const voices = speechSynthesis.getVoices();
+    jarvisVoice = voices.find(v => v.lang === "en-GB" && v.name.toLowerCase().includes("male")) || voices[0];
+  }
+  speechSynthesis.onvoiceschanged = loadVoice;
+
+  async function speak(text, onComplete) {
+    currentState = "SPEAKING"; statusText.textContent = "AUDIO OUTPUT...";
+    playSynthesizedSweep();
+
+    try {
+      const res = await fetch("http://localhost:5001/tts", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text })
+      });
+      if (!res.ok) throw new Error("TTS proxy error");
+      const blob = await res.blob();
+      const audio = new Audio(URL.createObjectURL(blob));
+      audio.onended = () => { currentState = "IDLE"; statusText.textContent = "SYSTEM READY"; if (onComplete) onComplete(); };
+      audio.play();
+    } catch (e) {
+      // Browser Fallback
+      const utt = new SpeechSynthesisUtterance(text);
+      if (!jarvisVoice) loadVoice();
+      if (jarvisVoice) utt.voice = jarvisVoice;
+      utt.pitch = 0.9; utt.rate = 1.02;
+      utt.onend = () => { currentState = "IDLE"; statusText.textContent = "SYSTEM READY"; if (onComplete) onComplete(); };
+      speechSynthesis.speak(utt);
+    }
+  }
+
+  // ============ MIC RECOGNITION ============
+  const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const recognition = SpeechRecognitionCtor ? new SpeechRecognitionCtor() : null;
+  if (recognition) {
+    recognition.continuous = false; recognition.interimResults = false; recognition.lang = "en-US";
+    recognition.onresult = (e) => {
+      if (currentState === "SPEAKING" || currentState === "THINKING") return;
+      const heard = e.results[0][0].transcript.trim();
+      if (heard) processQuery(heard);
+    };
+    recognition.onend = () => { if (currentState === "IDLE" || currentState === "LISTENING") setTimeout(startListening, 300); };
+  }
+  function startListening() {
+    if (!recognition || currentState === "SPEAKING" || currentState === "THINKING") return;
+    currentState = "LISTENING"; statusText.textContent = "LISTENING...";
+    try { recognition.start(); } catch (e) {}
+  }
+
+  // ============ CLAP WAKE ============
+  async function armClapDetector() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512; source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+
+      let lastClapTime = 0;
+      function checkClap() {
+        analyser.getByteFrequencyData(data);
+        const avg = data.reduce((a, b) => a + b, 0) / data.length;
+        if (avg > 55 && Date.now() - lastClapTime > 1200) {
+          lastClapTime = Date.now(); stream.getTracks().forEach(t => t.stop()); ctx.close(); bootSystem(); return;
+        }
+        if (document.getElementById("startOverlay").style.display !== "none") requestAnimationFrame(checkClap);
+      }
+      checkClap();
+    } catch (err) { document.getElementById("startLabel").textContent = "MIC DENIED - CLICK"; }
+  }
+  document.getElementById("startOverlay").addEventListener("click", bootSystem);
+  armClapDetector();
+
+  let bootStarted = false;
+  function bootSystem() {
+    if (bootStarted) return;
+    bootStarted = true; document.getElementById("startOverlay").style.display = "none";
+    initAudioEngine(); playSynthesizedSweep();
+    speak("Systems fully operational, sir.", () => startListening());
+  }
+
+  // ============ BACKGROUND VISUALS ============
+  const bgCanvas = document.getElementById("bgCanvas"), bgCtx = bgCanvas.getContext("2d");
+  const dataCanvas = document.getElementById("dataCanvas"), dctx = dataCanvas.getContext("2d");
+  const reactorCanvas = document.getElementById("reactorCanvas"), rctx = reactorCanvas.getContext("2d");
+
+  function resizeCanvases() { [bgCanvas, dataCanvas, reactorCanvas].forEach(c => { c.width = window.innerWidth; c.height = window.innerHeight; }); }
+  window.addEventListener("resize", resizeCanvases); resizeCanvases();
+
+  const particles = Array.from({ length: 100 }, () => ({
+    x: Math.random() * window.innerWidth, y: Math.random() * window.innerHeight,
+    size: Math.random() * 2 + 0.5, speedY: -(Math.random() * 0.9 + 0.15), driftX: (Math.random() - 0.5) * 0.3, opacity: Math.random() * 0.7 + 0.2
+  }));
+  let gridOffset = 0;
+
+  function renderBackground() {
+    bgCtx.fillStyle = "#020813"; bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+    bgCtx.strokeStyle = "rgba(0,225,255,0.05)"; bgCtx.lineWidth = 1; gridOffset = (gridOffset + 0.5) % 40;
+    for (let x = 0; x < bgCanvas.width; x += 40) { bgCtx.beginPath(); bgCtx.moveTo(x, 0); bgCtx.lineTo(x, bgCanvas.height); bgCtx.stroke(); }
+    for (let y = gridOffset; y < bgCanvas.height; y += 40) { bgCtx.beginPath(); bgCtx.moveTo(0, y); bgCtx.lineTo(bgCanvas.width, y); bgCtx.stroke(); }
+    particles.forEach(p => {
+      p.y += p.speedY; p.x += p.driftX;
+      if (p.y < 0) p.y = bgCanvas.height;
+      if (p.x < 0) p.x = bgCanvas.width; if (p.x > bgCanvas.width) p.x = 0;
+      bgCtx.fillStyle = isActiveSession ? "rgba(255,51,0," + p.opacity + ")" : "rgba(0,225,255," + p.opacity + ")";
+      bgCtx.beginPath(); bgCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2); bgCtx.fill();
+    });
+    requestAnimationFrame(renderBackground);
+  }
+  renderBackground();
+
+  const dataPanels = [{ x: 0.08, y: 0.62, w: 150, h: 60, kind: "bars" }, { x: 0.84, y: 0.62, w: 150, h: 60, kind: "wave" }];
+  function renderDataLayer() {
+    dctx.clearRect(0, 0, dataCanvas.width, dataCanvas.height);
+    const mainColor = isActiveSession ? "#ff3300" : "#00e1ff";
+    dctx.strokeStyle = mainColor; dctx.fillStyle = mainColor; dctx.globalAlpha = 0.5;
+    dataPanels.forEach(panel => {
+      const px = panel.x * dataCanvas.width, py = panel.y * dataCanvas.height;
+      dctx.strokeRect(px, py, panel.w, panel.h);
+      if (panel.kind === "bars") {
+        for (let i = 0; i < 12; i++) {
+          const h = (Math.sin(Date.now() / 300 + i * 0.7) * 0.5 + 0.5) * (panel.h - 10);
+          dctx.fillRect(px + 6 + i * ((panel.w - 12) / 12), py + panel.h - 5 - h, 4, h);
+        }
+      } else {
+        dctx.beginPath();
+        for (let i = 0; i < 60; i++) {
+          const x = px + (i / 60) * panel.w;
+          const amp = currentState === "SPEAKING" ? Math.random() : Math.sin(Date.now() / 400 + i * 0.3) * 0.3 + 0.3;
+          const y = py + panel.h / 2 - amp * (panel.h / 2 - 4);
+          if (i === 0) dctx.moveTo(x, y); else dctx.lineTo(x, y);
+        }
+        dctx.stroke();
+      }
+    });
+    dctx.globalAlpha = 1; requestAnimationFrame(renderDataLayer);
+  }
+  renderDataLayer();
+
+  let angle1 = 0, angle2 = 0;
+  function renderReactor() {
+    rctx.clearRect(0, 0, reactorCanvas.width, reactorCanvas.height);
+    const cx = reactorCanvas.width / 2, cy = reactorCanvas.height / 2;
+    const mult = currentState === "THINKING" ? 2.2 : currentState === "SPEAKING" ? 1.6 : 1.0;
+    angle1 += 0.003 * mult; angle2 -= 0.006 * mult;
+    const mainColor = isActiveSession ? "#ff3300" : "#00e1ff";
+
+    rctx.save(); rctx.translate(cx, cy); rctx.rotate(angle1);
+    rctx.strokeStyle = mainColor; rctx.globalAlpha = 0.35; rctx.lineWidth = 8; rctx.setLineDash([16, 10]);
+    rctx.beginPath(); rctx.arc(0, 0, 200, 0, Math.PI * 2); rctx.stroke();
+    rctx.rotate(angle2); rctx.globalAlpha = 0.55; rctx.lineWidth = 2; rctx.setLineDash([]);
+    for (let i = 0; i < 36; i++) {
+      const a = (i * Math.PI * 2) / 36;
+      rctx.beginPath(); rctx.moveTo(Math.cos(a) * 172, Math.sin(a) * 172); rctx.lineTo(Math.cos(a) * 184, Math.sin(a) * 184); rctx.stroke();
+    }
+    const rTri = 105; rctx.globalAlpha = 0.9; rctx.lineWidth = 4; rctx.strokeStyle = mainColor; rctx.beginPath();
+    for (let i = 0; i < 3; i++) {
+      const a = (i * Math.PI * 2) / 3 - Math.PI / 2;
+      const x = Math.cos(a) * rTri, y = Math.sin(a) * rTri;
+      if (i === 0) rctx.moveTo(x, y); else rctx.lineTo(x, y);
+    }
+    rctx.closePath(); rctx.stroke();
+    const grad = rctx.createRadialGradient(0, 0, 10, 0, 0, 125);
+    grad.addColorStop(0, mainColor); grad.addColorStop(0.7, isActiveSession ? "rgba(255,51,0,0.15)" : "rgba(0,119,255,0.15)"); grad.addColorStop(1, "transparent");
+    rctx.fillStyle = grad; rctx.globalAlpha = 1; rctx.fill();
+    rctx.restore(); requestAnimationFrame(renderReactor);
+  }
+  renderReactor();
+
+  // ============ TELEMETRY ============
+  let simState = { cpu: 40, mem: 55, net: 70 };
+  setInterval(() => {
+    Object.keys(simState).forEach(k => { simState[k] += (Math.random() - 0.5) * 10; simState[k] = Math.max(15, Math.min(98, simState[k])); });
+    document.getElementById("cpuValText").textContent = Math.round(simState.cpu) + "%"; document.getElementById("memValText").textContent = Math.round(simState.mem) + "%";
+  }, 1800);
+
+  const cpuGraphCanvas = document.getElementById("cpuGraphCanvas"), cgctx = cpuGraphCanvas.getContext("2d");
+  let cpuGraphData = Array.from({ length: 40 }, () => 40);
+  setInterval(() => {
+    cpuGraphData.shift(); cpuGraphData.push(simState.cpu);
+    cgctx.clearRect(0, 0, 210, 28); cgctx.strokeStyle = "#00e1ff"; cgctx.lineWidth = 1.5; cgctx.beginPath();
+    for (let i = 0; i < cpuGraphData.length; i++) {
+      const x = (i / cpuGraphData.length) * 210, y = 28 - (cpuGraphData[i] / 100) * 28;
+      if (i === 0) cgctx.moveTo(x, y); else cgctx.lineTo(x, y);
+    }
+    cgctx.stroke();
+  }, 300);
+
+  // ============ WEATHER ============
+  async function fetchWeather() {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${pos.coords.latitude}&longitude=${pos.coords.longitude}&current=temperature_2m,weather_code&temperature_unit=fahrenheit`;
+        const data = await (await fetch(url)).json();
+        document.getElementById("weatherTemp").textContent = Math.round(data.current.temperature_2m) + "°F";
+        const wCodes = {0:"CLEAR", 1:"PARTLY CLOUDY", 2:"CLOUDY", 3:"OVERCAST", 45:"FOG", 61:"RAIN", 71:"SNOW", 95:"STORM"};
+        document.getElementById("weatherCondition").textContent = wCodes[data.current.weather_code] || "ACTIVE";
+        document.getElementById("weatherLocation").textContent = `LAT ${pos.coords.latitude.toFixed(2)} / LON ${pos.coords.longitude.toFixed(2)}`;
+      } catch (e) {}
+    });
+  }
+  fetchWeather(); setInterval(fetchWeather, 600000);
+
+  // ============ UI DECORATIONS ============
+  function randomHexLine() { let l = ""; for (let i=0; i<6; i++) l += Math.floor(Math.random()*256).toString(16).padStart(2,"0").toUpperCase()+" "; return l; }
+  function buildStream(el) { let c = ""; for (let i=0; i<40; i++) c += randomHexLine() + "<br>"; el.innerHTML = c + c; }
+  setInterval(() => { buildStream(document.getElementById("streamLeft")); buildStream(document.getElementById("streamRight")); }, 6000);
+  buildStream(document.getElementById("streamLeft")); buildStream(document.getElementById("streamRight"));
+  document.getElementById("streamLeft").style.animationDuration = "18s"; document.getElementById("streamRight").style.animationDuration = "22s";
+
+  const diagMessages = ["> scanning subsystems...", "> memory buffer synced", "> voice channel stable", "> thermal levels nominal", "> latency: 42ms"];
+  setInterval(() => { logDiagnostic(diagMessages[Math.floor(Math.random() * diagMessages.length)]); }, 1500);
+</script>
+</body>
+</html>

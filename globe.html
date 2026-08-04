@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>J.A.R.V.I.S. Holographic Display</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+<style>
+  :root {
+    --hud-cyan: #00e1ff;
+    --hud-glass: rgba(0, 15, 30, 0.88);
+    --hud-border: rgba(0, 225, 255, 0.6);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: #000205; height: 100vh; width: 100vw; overflow: hidden;
+    font-family: 'Share Tech Mono', monospace; color: var(--hud-cyan); user-select: none;
+  }
+
+  #mapContainer {
+    position: absolute; inset: 0; z-index: 1;
+    filter: invert(100%) hue-rotate(180deg) sepia(100%) hue-rotate(140deg) saturate(400%) brightness(1.2);
+    opacity: 0; transition: opacity 1s ease;
+  }
+  #mapContainer.active { opacity: 1; }
+
+  .crt-overlay {
+    position: fixed; inset: 0; z-index: 20; pointer-events: none;
+    background: linear-gradient(rgba(18,16,16,0) 50%, rgba(0,0,0,0.35) 50%);
+    background-size: 100% 3px; box-shadow: inset 0 0 120px rgba(0,0,0,0.9);
+  }
+
+  .standby-title {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    font-family: 'Orbitron'; font-size: 28px; font-weight: 900; letter-spacing: 6px;
+    color: rgba(0, 225, 255, 0.2); pointer-events: none; z-index: 2; text-align: center;
+  }
+
+  /* RESEARCH TAB - drag off any edge to dismiss */
+  #holoMediaTab {
+    position: fixed; top: 8%; left: 50%; transform: translateX(-50%);
+    width: 800px; background: var(--hud-glass); border: 2px solid var(--hud-cyan);
+    box-shadow: 0 0 45px rgba(0,225,255,0.4), inset 0 0 20px rgba(0,225,255,0.15);
+    backdrop-filter: blur(14px); z-index: 30; display: none; flex-direction: column;
+    padding: 22px; opacity: 0; cursor: grab; transition: opacity 0.4s ease;
+  }
+  #holoMediaTab.active { display: flex; opacity: 1; }
+  .holo-tab-header {
+    font-family: 'Orbitron'; font-size: 14px; font-weight: 900; letter-spacing: 2px; color: #fff;
+    border-bottom: 2px solid var(--hud-border); padding-bottom: 10px;
+    display: flex; justify-content: space-between; align-items: center;
+    text-transform: uppercase; pointer-events: none;
+  }
+  .holo-tab-hint { font-size: 9px; opacity: 0.6; letter-spacing: 1px; margin-top: 6px; text-align: center; pointer-events: none; }
+  .holo-image-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; pointer-events: none; }
+  .holo-img { width: 100%; height: 220px; object-fit: cover; border: 1px solid var(--hud-cyan); box-shadow: 0 0 12px rgba(0,225,255,0.3); background: #001122; }
+
+  #holoSphere {
+    position: fixed; width: 150px; height: 150px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(0,255,255,0.8) 20%, rgba(0,100,255,0.2) 80%);
+    box-shadow: 0 0 80px var(--hud-cyan), inset 0 0 40px #fff;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    transition: all 2s cubic-bezier(0.25,1,0.5,1);
+    z-index: 15; pointer-events: none; opacity: 0;
+  }
+  #holoSphere.active { opacity: 1; }
+  #holoSphere::before, #holoSphere::after {
+    content: ''; position: absolute; inset: -20px; border-radius: 50%;
+    border: 2px solid rgba(0,225,255,0.5); border-top-color: transparent; animation: spin 3s linear infinite;
+  }
+  #holoSphere::after { inset: -40px; border: 1px solid rgba(0,225,255,0.3); border-bottom-color: transparent; animation: spinReverse 5s linear infinite; }
+  @keyframes spin { 100% { transform: rotate(360deg); } }
+  @keyframes spinReverse { 100% { transform: rotate(-360deg); } }
+  #holoSphere.lock-corner { top: 15%; left: 88%; transform: translate(-50%, -50%) scale(0.3); }
+
+  .location-data-panel {
+    position: fixed; left: 4%; bottom: 6%; width: 420px; padding: 20px;
+    background: rgba(0,15,30,0.9); border-left: 5px solid var(--hud-cyan);
+    font-family: 'Orbitron'; z-index: 15; opacity: 0; transform: translateX(-40px);
+    transition: all 0.8s ease 0.5s; box-shadow: 0 0 30px rgba(0,225,255,0.25); pointer-events: none;
+  }
+  .location-data-panel.active { opacity: 1; transform: translateX(0); }
+</style>
+</head>
+<body>
+
+<canvas id="bgCanvas" style="position:fixed; inset:0; z-index:0;"></canvas>
+<div id="mapContainer"></div>
+<div class="crt-overlay"></div>
+
+<div class="standby-title" id="standbyText">HOLOGRAPHIC DISPLAY<br>STANDBY</div>
+
+<div id="holoSphere"></div>
+
+<div class="location-data-panel" id="locPanel">
+  <h2 id="locTitle" style="color:#fff; letter-spacing:3px; font-size:22px; text-transform:uppercase; margin-bottom:10px;">ORBITAL SCAN</h2>
+  <div style="color:var(--hud-cyan); font-size:12px; letter-spacing:2px; margin-bottom:6px;" id="locCoords">LOCATING...</div>
+  <div style="color:#aaa; font-size:11px;">
+    <div id="scanStatus">CALCULATING TRAJECTORY</div>
+  </div>
+</div>
+
+<div id="holoMediaTab">
+  <div class="holo-tab-header">
+    <span id="holoTabTitle">// RESEARCH DATASTREAM</span>
+    <span id="holoCategoryTag" style="font-size:10px; color:var(--hud-cyan); background:rgba(0,225,255,0.15); padding:4px 8px; border:1px solid var(--hud-cyan);">VISUALIZATION</span>
+  </div>
+  <div class="holo-tab-hint">drag this panel to any screen edge to dismiss</div>
+  <div class="holo-image-grid" id="holoImageGrid"></div>
+</div>
+
+<script>
+  const mapContainer = document.getElementById("mapContainer");
+  const locPanel = document.getElementById("locPanel");
+  const holoSphere = document.getElementById("holoSphere");
+  const standbyText = document.getElementById("standbyText");
+  const holoTab = document.getElementById("holoMediaTab");
+
+  // ============ MAP ENGINE (free, no API key - MapLibre + OpenStreetMap tiles) ============
+  const map = new maplibregl.Map({
+    container: 'mapContainer',
+    style: {
+      version: 8,
+      sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256 } },
+      layers: [{ id: 'osm-layer', type: 'raster', source: 'osm', minzoom: 0, maxzoom: 19 }]
+    },
+    center: [-20, 30], zoom: 1.2, pitch: 0, bearing: 0, interactive: false
+  });
+
+  let spinning = false;
+  map.on('style.load', () => { try { map.setProjection({ type: 'globe' }); } catch (e) {} });
+
+  function spinGlobe() {
+    if (!spinning) return;
+    const center = map.getCenter();
+    center.lng += 0.5;
+    map.easeTo({ center, duration: 1000, easing: n => n });
+    setTimeout(spinGlobe, 1000);
+  }
+
+  async function triggerSpaceToGroundDive(query) {
+    try {
+      standbyText.style.display = "none";
+      holoTab.classList.remove("active");
+      spinning = true; spinGlobe();
+      mapContainer.classList.add("active");
+      map.jumpTo({ center: [-20, 30], zoom: 1.2, pitch: 0, bearing: 0 });
+
+      locPanel.classList.add("active");
+      document.getElementById("locTitle").textContent = "ORBITAL SCAN";
+      document.getElementById("locCoords").textContent = "SEARCHING: " + query.toUpperCase();
+      document.getElementById("scanStatus").textContent = "TRIANGULATING SATELLITE DATA...";
+
+      holoSphere.classList.remove("lock-corner");
+      holoSphere.classList.add("active");
+
+      // Free geocoding, no API key - Nominatim (OpenStreetMap's search service)
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+      const results = await response.json();
+
+      if (results && results.length > 0) {
+        const lat = parseFloat(results[0].lat);
+        const lon = parseFloat(results[0].lon);
+
+        setTimeout(() => {
+          spinning = false;
+          document.getElementById("locTitle").textContent = results[0].display_name.split(',')[0].toUpperCase();
+          document.getElementById("locCoords").textContent = `LAT: ${lat.toFixed(4)}° | LON: ${lon.toFixed(4)}°`;
+          document.getElementById("scanStatus").textContent = "EXECUTING SURFACE DIVE...";
+
+          map.flyTo({ center: [lon, lat], zoom: 14.5, pitch: 65, bearing: 45, speed: 1.5, curve: 1.4, essential: true });
+
+          setTimeout(() => {
+            holoSphere.classList.add("lock-corner");
+            document.getElementById("scanStatus").textContent = "TOPOGRAPHY GRID RENDERED";
+          }, 3500);
+        }, 2000);
+      } else {
+        spinning = false;
+        document.getElementById("locTitle").textContent = query.toUpperCase();
+        document.getElementById("locCoords").textContent = "TARGET UNREACHABLE";
+      }
+    } catch (err) { spinning = false; }
+  }
+
+  // Auto-clear the location view after a while so it returns to standby
+  let clearTimer = null;
+  function scheduleLocationClear() {
+    if (clearTimer) clearTimeout(clearTimer);
+    clearTimer = setTimeout(() => {
+      mapContainer.classList.remove("active");
+      locPanel.classList.remove("active");
+      holoSphere.classList.remove("active", "lock-corner");
+      spinning = false;
+      setTimeout(() => { standbyText.style.display = "block"; }, 1000);
+    }, 20000);
+  }
+
+  // ============ RESEARCH IMAGE TAB ============
+  function showResearchTab(topic, images) {
+    spinning = false;
+    mapContainer.classList.remove("active");
+    locPanel.classList.remove("active");
+    holoSphere.classList.remove("active", "lock-corner");
+    standbyText.style.display = "none";
+
+    document.getElementById("holoTabTitle").textContent = "// RESEARCH: " + topic.toUpperCase();
+    document.getElementById("holoCategoryTag").textContent = "WIKIPEDIA";
+
+    holoTab.style.left = "50%";
+    holoTab.style.top = "8%";
+    holoTab.style.transform = "translateX(-50%)";
+
+    document.getElementById("holoImageGrid").innerHTML = images.map(imgUrl =>
+      `<img src="${imgUrl}" class="holo-img" onerror="this.style.display='none'" />`
+    ).join("");
+
+    setTimeout(() => holoTab.classList.add("active"), 50);
+  }
+
+  // ============ DRAG-TO-DISMISS ============
+  let isDragging = false, startX, startY, initLeft, initTop;
+  holoTab.addEventListener("mousedown", (e) => {
+    isDragging = true;
+    startX = e.clientX; startY = e.clientY;
+    const rect = holoTab.getBoundingClientRect();
+    initLeft = rect.left; initTop = rect.top;
+    holoTab.style.transition = "none";
+    holoTab.style.cursor = "grabbing";
+    holoTab.style.left = initLeft + "px";
+    holoTab.style.top = initTop + "px";
+    holoTab.style.transform = "none";
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!isDragging) return;
+    holoTab.style.left = (initLeft + (e.clientX - startX)) + "px";
+    holoTab.style.top = (initTop + (e.clientY - startY)) + "px";
+  });
+  window.addEventListener("mouseup", () => {
+    if (!isDragging) return;
+    isDragging = false;
+    holoTab.style.cursor = "grab";
+    holoTab.style.transition = "opacity 0.4s ease";
+    const rect = holoTab.getBoundingClientRect();
+    if (rect.right < 100 || rect.left > window.innerWidth - 100 || rect.bottom < 100 || rect.top > window.innerHeight - 100) {
+      holoTab.classList.remove("active");
+      setTimeout(() => { standbyText.style.display = "block"; }, 500);
+    }
+  });
+
+  // ============ RECEIVE MESSAGES FROM hud.html ============
+  window.addEventListener("message", (event) => {
+    const data = event.data;
+    if (!data || !data.category) return;
+
+    if (data.category === "LOCATION") {
+      triggerSpaceToGroundDive(data.query_title || "");
+      scheduleLocationClear();
+    } else if (data.category === "RESEARCH" && data.images && data.images.length > 0) {
+      showResearchTab(data.query_title || "", data.images);
+    }
+  });
+
+  // ============ BACKGROUND PARTICLES ============
+  const bgCanvas = document.getElementById("bgCanvas");
+  const bgCtx = bgCanvas.getContext("2d");
+  function resize() { bgCanvas.width = window.innerWidth; bgCanvas.height = window.innerHeight; }
+  window.addEventListener("resize", resize); resize();
+
+  function renderBg() {
+    bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+    bgCtx.fillStyle = "rgba(0, 225, 255, 0.25)";
+    for (let i = 0; i < 35; i++) {
+      const x = (Date.now() / 20 + i * 150) % bgCanvas.width;
+      const y = (Math.sin(Date.now() / 1000 + i) * 60) + (i * 40 % bgCanvas.height);
+      bgCtx.fillRect(x, y, 2, 2);
+    }
+    requestAnimationFrame(renderBg);
+  }
+  renderBg();
+</script>
+</body>
+</html>
