@@ -24,17 +24,27 @@
 
   // ============ CONNECTION STATE ============
   const connStatus = document.getElementById("connStatus");
+  const connText = document.getElementById("connText");
 
   apiClient.onConnect(() => {
-    connStatus.classList.add("online");
-    if (bootStarted) {
-      logDiagnostic("> backend reconnected", false);
-    }
+    connText.textContent = "JARVIS ONLINE";
+    connStatus.querySelector(".conn-dot").style.background = "var(--hud-cyan)";
+    connStatus.querySelector(".conn-dot").style.animation = "none";
+    connStatus.style.borderColor = "rgba(0,225,255,0.35)";
+    connStatus.style.color = "var(--hud-cyan)";
+    // Fade out after brief display
+    setTimeout(() => connStatus.classList.add("online"), 1800);
+    if (bootStarted) logDiagnostic("> backend reconnected", false);
   });
 
   apiClient.onDisconnect(() => {
     connStatus.classList.remove("online");
-    connStatus.querySelector(".conn-dot").style.background = "var(--hud-orange)";
+    connText.textContent = "CONNECTING TO JARVIS CORE...";
+    const dot = connStatus.querySelector(".conn-dot");
+    dot.style.background = "var(--hud-orange)";
+    dot.style.animation = "blinkDot 0.9s ease-in-out infinite";
+    connStatus.style.borderColor = "rgba(255,51,0,0.45)";
+    connStatus.style.color = "var(--hud-orange)";
     logDiagnostic("> backend offline — retrying...", true);
   });
 
