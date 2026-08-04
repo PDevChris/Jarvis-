@@ -539,6 +539,17 @@ def tts():
     except Exception as e:
         return jsonify({"error": str(e)}), 502
 
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
+
+@app.route("/favicon.ico")
+def favicon():
+    # Suppress 404 noise in the browser console
+    return Response(status=204)
+
+
 # Serve the existing HUD page directly from Flask
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 HUD_HTML_PATH = os.path.join(BASE_DIR, "hud.html")

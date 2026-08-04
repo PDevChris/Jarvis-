@@ -6,6 +6,7 @@
   const centerText = document.getElementById("centerText");
   const statusText = document.getElementById("statusText");
   const transcript = document.getElementById("transcript");
+  const diagLogEl = document.getElementById("diagLog");
   const holoWorkspace = document.getElementById("holoWorkspace");
   const floatingPanelTemplate = document.getElementById("floatingPanelTemplate");
 
@@ -17,12 +18,27 @@
   });
 
   const SYSTEM_PROMPT = "You are JARVIS. Address the user as 'sir'. Dry British wit, polite, technically precise. Keep every answer under 30 words, no exceptions. Current year is 2026.";
-  const TTS_PROXY_URL = "http://localhost:8000/tts";
-  const ASSISTANT_API_URL = "http://localhost:8000/api/assistant";
-  const PAGE_CONTEXT_API_URL = "http://localhost:8000/api/page-context";
   const isExtension = typeof chrome !== "undefined" && !!chrome.runtime?.id;
   let floatingWindowIndex = 0;
   let activeMapMarker = null;
+
+  // ============ CONNECTION STATE ============
+  const connStatus = document.getElementById("connStatus");
+
+  apiClient.onConnect(() => {
+    connStatus.classList.add("online");
+    if (bootStarted) {
+      logDiagnostic("> backend reconnected", false);
+    }
+  });
+
+  apiClient.onDisconnect(() => {
+    connStatus.classList.remove("online");
+    connStatus.querySelector(".conn-dot").style.background = "var(--hud-orange)";
+    logDiagnostic("> backend offline — retrying...", true);
+  });
+
+  apiClient.startPolling();
 
   // ============ MODULAR HOLOGRAPHIC PANEL HELPERS ============
   function openHoloPanel(id) {
@@ -209,6 +225,21 @@
   armClapDetector();
 
   let bootStarted = false;
+
+  function playWakeSequence(callback) {
+    const ring = document.getElementById("wakeRing");
+    const label = document.getElementById("wakeLabel");
+    ring.classList.remove("play"); label.classList.remove("play");
+    void ring.offsetWidth; void label.offsetWidth; // force reflow to re-trigger animation
+    setTimeout(() => label.classList.add("play"), 80);
+    ring.classList.add("play");
+    setTimeout(() => {
+      ring.classList.remove("play");
+      label.classList.remove("play");
+      callback?.();
+    }, 1500);
+  }
+
   function bootSystem() {
     if (bootStarted) return;
     bootStarted = true;
@@ -217,7 +248,7 @@
     initAudioEngine();
     playSweep();
     playNotify();
-    speak("Online, sir. Standing by.", () => startListening());
+    playWakeSequence(() => speak("Online, sir.", () => startListening()));
   }
 
   // ============ TTS ============
@@ -240,11 +271,6 @@
     speechSynthesis.speak(utterance);
   }
 
-  // Tracks whether we've already told the user about a broken voice link this
-  // session, so Jarvis mentions it once instead of every single reply
-  let voiceProxyIssueReported = false;
-  let voiceProxyWorking = true;
-
   function logDiagnostic(message, isWarning) {
     const line = document.createElement("div");
     line.className = "diag-line";
@@ -261,21 +287,7 @@
     transcript.textContent = "JARVIS: " + text;
 
     try {
-      const res = await fetch(TTS_PROXY_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text })
-      });
-      if (!res.ok) {
-        // Self-diagnosis: read the actual reason the proxy gave, not just "it failed"
-        let reason = "unknown error";
-        try { reason = (await res.json()).error || reason; } catch (e) {}
-        voiceProxyWorking = false;
-        logDiagnostic("> voice proxy error: " + reason, true);
-        throw new Error(reason);
-      }
-      voiceProxyWorking = true;
-      const blob = await res.blob();
+      const blob = await apiClient.tts(text);
       const url = URL.createObjectURL(blob);
       const audioEl = new Audio(url);
       audioEl.onended = () => {
@@ -286,14 +298,8 @@
       };
       audioEl.onerror = () => speakBrowserVoice(text, onComplete);
       audioEl.play();
-    } catch (e) {
-      // Report the issue out loud once per session, then just fall back quietly after that
-      if (!voiceProxyIssueReported) {
-        voiceProxyIssueReported = true;
-        speakBrowserVoice(text + " Also, sir - my primary voice link appears to be down, running on backup audio.", onComplete);
-      } else {
-        speakBrowserVoice(text, onComplete);
-      }
+    } catch (_) {
+      speakBrowserVoice(text, onComplete);
     }
   }
 
@@ -454,12 +460,7 @@
 
     try {
       const payload = currentCoords ? { latitude: currentCoords.latitude, longitude: currentCoords.longitude, query: "Current location" } : { query: place };
-      const res = await fetch("http://localhost:8000/api/location-info", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
+      const data = await apiClient.locationInfo(payload);
       if (data.status === "success") {
         const coords = data.coords || {};
         const title = (data.title || place).toUpperCase();
@@ -568,29 +569,13 @@
     });
   }
 
-  // ============ PERSISTENT MEMORY (via jarvis_proxy.py) ============
-  const MEMORY_URL = "http://localhost:8000/memory";
-
-  async function saveToMemory(role, text) {
-    try {
-      await fetch(MEMORY_URL + "/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role, text })
-      });
-    } catch (e) {
-      logDiagnostic("> memory save failed - is proxy running?", true);
-    }
+  // ============ PERSISTENT MEMORY ============
+  function saveToMemory(role, text) {
+    apiClient.saveMemory(role, text);
   }
 
   async function recallMemory(limit) {
-    try {
-      const res = await fetch(MEMORY_URL + "/recent?limit=" + (limit || 8));
-      const data = await res.json();
-      return data.entries || [];
-    } catch (e) {
-      return [];
-    }
+    return apiClient.recallMemory(limit || 8).catch(() => []);
   }
 
   function formatMemoryAsContext(entries) {
@@ -613,17 +598,10 @@
     try {
       const locationContext = isCurrentLocationRequest(question) ? await getCurrentCoordinates() : null;
 
-      const response = await fetch(ASSISTANT_API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: question,
-          page_context: pageContext,
-          location_context: locationContext
-        })
+      const payload = await apiClient.assistant(question, {
+        page_context: pageContext,
+        location_context: locationContext,
       });
-      if (!response.ok) throw new Error("Assistant endpoint unreachable.");
-      const payload = await response.json();
       if (payload.status !== "success") throw new Error(payload.message || "Assistant request failed.");
 
       stopProcessingChatter();
@@ -639,18 +617,18 @@
       speak(payload.response, () => { statusText.textContent = "SYSTEM ACTIVE"; centerText.classList.remove("active"); isActiveSession = false; });
     } catch (err) {
       stopProcessingChatter();
-      const reason = err.name === "AbortError" ? "RESPONSE TIMED OUT" : "ASSISTANT ERROR";
+      const offline = err.message?.includes("Failed to fetch") || !apiClient.connected;
+      const reason = offline ? "BACKEND OFFLINE" : (err.name === "AbortError" ? "TIMED OUT" : "ERROR");
       statusText.textContent = reason;
-      transcript.textContent = err.message;
-      logDiagnostic("> " + reason + ": " + err.message, true);
+      transcript.textContent = offline ? "Reconnecting to JARVIS..." : err.message;
+      logDiagnostic("> " + reason + (offline ? "" : ": " + err.message), true);
       centerText.classList.remove("active");
       isActiveSession = false;
       currentState = "IDLE";
 
-      // Self-diagnosis: tell the user what's actually wrong instead of going silent
-      const diagnosis = err.name === "AbortError"
-        ? "My apologies, sir - that request timed out. My local model may be overloaded."
-        : "Sir, I'm unable to reach my local assistant services. Please confirm the connector is running.";
+      const diagnosis = offline
+        ? "Backend offline, sir. I will reconnect automatically."
+        : (err.name === "AbortError" ? "Request timed out, sir. Please try again." : "Processing error, sir. Please try again.");
       speak(diagnosis, () => startListening());
     }
   }
@@ -853,7 +831,6 @@
   // ============ DIAGNOSTIC LOG ============
   const diagMessages = ["> scanning subsystems...", "> memory buffer synced", "> voice channel stable",
     "> thermal levels nominal", "> network handshake OK", "> parsing input stream", "> latency: 42ms"];
-  const diagLogEl = document.getElementById("diagLog");
   setInterval(() => {
     const line = document.createElement("div");
     line.className = "diag-line";

@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23020813'/><text x='16' y='22' text-anchor='middle' fill='%2300e1ff' font-family='monospace' font-size='18' font-weight='bold'>J</text></svg>">
 <script src="vendor/maplibre-gl.js"></script>
 <link href="vendor/maplibre-gl.css" rel="stylesheet" />
 <title>JARVIS Terminal</title>
@@ -45,6 +46,50 @@
   /* ---------- STANDBY PULSE ---------- */
   @keyframes standbyPulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
   #statusText.standby { animation: standbyPulse 2.8s ease-in-out infinite; }
+
+  /* ---------- CONNECTION STATUS ---------- */
+  #connStatus {
+    position: fixed; bottom: 34px; right: 16px; z-index: 7;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 10px; letter-spacing: 1.5px;
+    background: rgba(1,8,19,0.88); padding: 5px 12px;
+    border: 1px solid rgba(255,51,0,0.45); color: var(--hud-orange);
+    transition: opacity 0.5s ease, border-color 0.5s ease, color 0.5s ease;
+  }
+  #connStatus.online { opacity: 0; pointer-events: none; }
+  #connStatus .conn-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--hud-orange);
+    animation: blinkDot 0.9s ease-in-out infinite;
+  }
+
+  /* ---------- WAKE ANIMATION ---------- */
+  #wakeRing {
+    position: fixed; top: 50%; left: 50%;
+    width: 520px; height: 520px; border-radius: 50%;
+    border: 2px solid var(--hud-cyan);
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0; pointer-events: none; z-index: 22;
+  }
+  #wakeRing.play { animation: wakeRingOut 1.3s cubic-bezier(.2,.8,.4,1) forwards; }
+  @keyframes wakeRingOut {
+    0%   { transform: translate(-50%,-50%) scale(0);   opacity: 1; }
+    100% { transform: translate(-50%,-50%) scale(1.8); opacity: 0; }
+  }
+  #wakeLabel {
+    position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 52px; font-weight: 900; letter-spacing: 16px;
+    color: var(--hud-cyan); text-shadow: 0 0 40px var(--hud-cyan), 0 0 80px var(--hud-cyan);
+    opacity: 0; pointer-events: none; z-index: 23; white-space: nowrap;
+  }
+  #wakeLabel.play { animation: wakeLabelIn 1.5s ease forwards; }
+  @keyframes wakeLabelIn {
+    0%   { opacity: 0; letter-spacing: 28px; }
+    35%  { opacity: 1; letter-spacing: 16px; }
+    75%  { opacity: 1; letter-spacing: 16px; }
+    100% { opacity: 0; letter-spacing: 14px; }
+  }
 
   /* ---------- TOP BADGE ---------- */
   .user-badge {
@@ -276,6 +321,10 @@
 <div class="crt-overlay"></div>
 <div class="vignette"></div>
 
+<div id="wakeRing"></div>
+<div id="wakeLabel">JARVIS</div>
+<div id="connStatus"><span class="conn-dot"></span>CONNECTING TO JARVIS...</div>
+
 <div class="user-badge">
   <div class="dot"></div>
   <div>
@@ -382,6 +431,7 @@
   </div>
 </template>
 
+<script src="api-client.js"></script>
 <script src="hud.js"></script>
 </body>
 </html>
