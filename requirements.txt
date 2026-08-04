@@ -2,6 +2,5 @@ Flask>=3.0,<4
 Flask-Cors>=4.0,<5
 requests>=2.32,<3
 psutil>=6.0,<7
-duckduckgo-search>=6.3,<7
-ddgs>=8.0,<9
+ddgs>=9.0
 pytest>=9.0,<10

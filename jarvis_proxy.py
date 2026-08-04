@@ -12,7 +12,7 @@ from flask_cors import CORS
 try:
     from ddgs import DDGS
 except ImportError:
-    from duckduckgo_search import DDGS
+    from duckduckgo_search import DDGS  # legacy name fallback
 
 app = Flask(__name__)
 CORS(app)
