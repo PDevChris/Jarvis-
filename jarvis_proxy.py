@@ -2,13 +2,21 @@ import os
 import io
 import re
 import json
-import subprocess
+import base64
 import warnings
 from datetime import datetime
 import requests
 import psutil
 from flask import Flask, request, Response, jsonify, send_file, send_from_directory
 from flask_cors import CORS
+
+try:
+    from PIL import ImageGrab
+    SCREEN_CAPTURE_AVAILABLE = True
+except ImportError:
+    SCREEN_CAPTURE_AVAILABLE = False
+    print("[WARNING] Pillow library not found. Screen reading will be disabled. Run 'pip install Pillow'")
+
 try:
     from ddgs import DDGS
 except ImportError:
@@ -20,17 +28,113 @@ CORS(app)
 # ==========================================
 # CONFIGURATION
 # ==========================================
-# Leave empty if you want to use Browser Web Speech API fallback
 FISH_API_KEY = ""
 FISH_VOICE_ID = ""
 
 MEMORY_PATH = "jarvis_memory.jsonl"
 DEFAULT_OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11435/api/generate")
+# We use standard 3.2 for text, and 3.2-vision when analyzing the screen
+DEFAULT_TEXT_MODEL = "llama3.2"
+DEFAULT_VISION_MODEL = "llama3.2-vision" 
 
 LOCATION_HINTS = [
     "where is", "where are", "take me to", "locate", "map of", "fly to",
     "show me on the map", "show me the city", "show me the country", "where am i", "near me", "around me",
 ]
+
+# ==========================================
+# SCREEN UNDERSTANDING MODULE
+# ==========================================
+def capture_screen_base64():
+    """Captures the current desktop screen and encodes it for the Vision LLM."""
+    if not SCREEN_CAPTURE_AVAILABLE:
+        return None
+    try:
+        # Grab all screens
+        screenshot = ImageGrab.grab(all_screens=True)
+        # Convert to RGB if necessary (removes alpha channel)
+        if screenshot.mode in ("RGBA", "P"):
+            screenshot = screenshot.convert("RGB")
+        # Downscale slightly to prevent massive payload sizes slowing down the LLM
+        screenshot.thumbnail((1920, 1080))
+        
+        buffered = io.BytesIO()
+        screenshot.save(buffered, format="JPEG", quality=80)
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        return img_str
+    except Exception as e:
+        print(f"[Screen Capture Error]: {e}")
+        return None
+
+def is_screen_prompt(prompt):
+    lower = prompt.lower().strip()
+    screen_triggers = [
+        "what am i looking at", "on my screen", "read my screen", 
+        "this cad model", "this drawing", "my screen", "look at this",
+        "what is this on my screen", "explain this code"
+    ]
+    return any(trigger in lower for trigger in screen_triggers)
+
+# ==========================================
+# APPLICATION CONTROL MODULE
+# ==========================================
+def extract_app_command(prompt):
+    lower = prompt.lower().strip()
+    if lower.startswith("open ") or lower.startswith("launch ") or lower.startswith("start "):
+        app_name = lower.split(" ", 1)[1].strip()
+        app_name = re.sub(r"[^\w\s]", "", app_name)
+        return app_name
+    return None
+
+def launch_local_application(app_name):
+    """Attempts to launch common engineering and standard applications on Windows."""
+    app_map = {
+        "chrome": "chrome",
+        "google chrome": "chrome",
+        "vs code": "code",
+        "vscode": "code",
+        "solidworks": "SLDWORKS",
+        "matlab": "matlab",
+        "discord": "discord",
+        "file explorer": "explorer",
+        "explorer": "explorer",
+        "notepad": "notepad",
+        "calculator": "calc",
+        "command prompt": "cmd",
+        "terminal": "wt",
+        "fusion 360": "fusion360",
+        "autocad": "acad"
+    }
+    
+    target = app_map.get(app_name, app_name)
+    try:
+        # 'start' command works natively on Windows for apps in the system PATH
+        os.system(f"start {target}")
+        return True
+    except Exception as e:
+        print(f"[App Launch Error]: {e}")
+        return False
+
+# ==========================================
+# CONVERSATIONAL DETECTOR
+# ==========================================
+def is_conversational_prompt(prompt):
+    lower = prompt.lower().strip()
+    
+    research_triggers = ["what is", "who is", "tell me about", "latest", "news about", "search", "explain how"]
+    if any(trigger in lower for trigger in research_triggers):
+        return False
+        
+    chat_triggers = [
+        "hey jarvis", "hi jarvis", "hello", "morning", "evening", 
+        "trouble", "help me", "cad", "model", "design", "build", 
+        "code", "script", "error", "idea", "brainstorm", "partner",
+        "how are you", "thanks", "thank you"
+    ]
+    
+    if any(trigger in lower for trigger in chat_triggers) or len(lower.split()) <= 4:
+        return True
+    return False
 
 # ==========================================
 # PERSISTENT MEMORY ENGINE
@@ -83,29 +187,6 @@ def is_location_prompt(prompt):
     return any(hint in lower for hint in LOCATION_HINTS)
 
 
-# ---- NEW: CONVERSATIONAL & ENGINEERING DETECTOR ----
-def is_conversational_prompt(prompt):
-    lower = prompt.lower().strip()
-    
-    # Explicit research triggers that SHOULD use the web
-    research_triggers = ["what is", "who is", "tell me about", "latest", "news about", "search"]
-    if any(trigger in lower for trigger in research_triggers):
-        return False
-        
-    # Partner/Engineering triggers that should skip the web and just chat
-    chat_triggers = [
-        "hey jarvis", "hi jarvis", "hello", "morning", "evening", 
-        "trouble", "help me", "cad", "model", "design", "build", 
-        "code", "script", "error", "idea", "brainstorm", "partner", "how are you"
-    ]
-    
-    # Treat it as conversation if it matches chat triggers or is very short (greetings)
-    if any(trigger in lower for trigger in chat_triggers) or len(lower.split()) <= 4:
-        return True
-        
-    return False
-
-
 def should_probe_show_me_location(prompt):
     lower = prompt.lower().strip()
     if not lower.startswith("show me "):
@@ -132,24 +213,32 @@ def summarize_location(display_name, query, wiki_text, nearby, weather):
     return f"{primary} location lock acquired.{weather_summary}{nearby_summary}".strip()
 
 
-def fetch_assistant_reply(system_instruction, prompt_for_ollama, fallback_reply):
+def fetch_assistant_reply(system_instruction, prompt_for_ollama, fallback_reply, images=None):
+    # Switch to the vision model if an image is provided
+    model_to_use = DEFAULT_VISION_MODEL if images else DEFAULT_TEXT_MODEL
+    
+    payload = {
+        "model": model_to_use,
+        "system": system_instruction,
+        "prompt": prompt_for_ollama,
+        "stream": False,
+        "options": {"num_predict": 120}
+    }
+    
+    if images:
+        payload["images"] = images
+
     try:
         ollama_response = requests.post(
             os.getenv("OLLAMA_URL", DEFAULT_OLLAMA_URL),
-            json={
-                "model": "llama3.2",
-                "system": system_instruction,
-                "prompt": prompt_for_ollama,
-                "stream": False,
-                "options": {"num_predict": 80}
-            },
-            timeout=12
+            json=payload,
+            timeout=25 # Increased timeout for vision processing
         )
         bot_reply = ollama_response.json().get("response", fallback_reply)
         bot_reply = re.sub(r"\(.*?\)|\[.*?\]", "", bot_reply).strip()
         return " ".join(bot_reply.split()) or fallback_reply
     except Exception as exc:
-        print(f"[Backend Error]: {exc}")
+        print(f"[Backend Error - Ollama]: {exc}")
         return fallback_reply
 
 
@@ -167,7 +256,6 @@ def fetch_live_data_and_images(query):
     news_context = ""
     image_urls = []
 
-    # 1. Primary: DDGS live search with per-surface fallbacks.
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
@@ -198,7 +286,6 @@ def fetch_live_data_and_images(query):
     except Exception as exc:
         print(f"[DDGS Notice]: {compact_warning_message(exc)}")
 
-    # 2. Secondary Fallback: Wikipedia REST API for Visual Images
     if not image_urls:
         try:
             wiki_res = requests.get(f"https://en.wikipedia.org/api/rest_v1/page/summary/{requests.utils.quote(query)}", timeout=4)
@@ -408,7 +495,9 @@ def page_context():
         "content_excerpt": source_text[:2000],
     })
 
-
+# ==========================================
+# MAIN ASSISTANT LOGIC (THE BRAIN)
+# ==========================================
 @app.route("/api/assistant", methods=["POST"])
 def assistant():
     data = request.get_json() or {}
@@ -421,12 +510,17 @@ def assistant():
 
     lower_prompt = user_prompt.lower()
     save_memory_entry("user", user_prompt)
-
     is_page_request = "webpage" in lower_prompt or "page" in lower_prompt or bool(page_context)
-    
-    # Determine the Intent Category
+
+    # ---- INTENT ROUTER ----
     category = "RESEARCH"
-    if is_location_prompt(user_prompt):
+    app_to_launch = extract_app_command(user_prompt)
+    
+    if app_to_launch:
+        category = "APP_CONTROL"
+    elif is_screen_prompt(user_prompt):
+        category = "SCREEN_READ"
+    elif is_location_prompt(user_prompt):
         category = "LOCATION"
     elif should_probe_show_me_location(user_prompt):
         probe_query = extract_location_query(user_prompt)
@@ -444,9 +538,22 @@ def assistant():
         "location": None,
         "page": None,
     }
+    
+    encoded_screen = None
 
-    # Execute based on Category
-    if category == "LOCATION":
+    # ---- EXECUTE INTENT ACTIONS ----
+    if category == "APP_CONTROL":
+        success = launch_local_application(app_to_launch)
+        research_bundle["summary"] = f"Action: Executing launch protocols for {app_to_launch}."
+        
+    elif category == "SCREEN_READ":
+        encoded_screen = capture_screen_base64()
+        if not encoded_screen:
+            research_bundle["summary"] = "Screen capture failed or Pillow library is missing."
+        else:
+            research_bundle["summary"] = "Processing visual telemetry from primary displays."
+            
+    elif category == "LOCATION":
         location_query = extract_location_query(user_prompt)
         if location_context.get("latitude") is not None and location_context.get("longitude") is not None and not location_query:
             location_result = location_info_internal(latitude=location_context.get("latitude"), longitude=location_context.get("longitude"), query="Current location")
@@ -460,7 +567,7 @@ def assistant():
     elif category == "RESEARCH":
         research_query = user_prompt.replace("Jarvis", "").replace("JARVIS", "").strip()
         text_data, news_data, image_urls = fetch_live_data_and_images(research_query)
-        research_bundle["summary"] = text_data or "I have gathered background context, sir."
+        research_bundle["summary"] = text_data or "I am pulling the requested data streams now, sir."
         research_bundle["news"] = news_data
         research_bundle["images"] = image_urls[:6]
         research_bundle["links"] = [
@@ -468,7 +575,6 @@ def assistant():
         ]
         
     elif category == "CONVERSATION":
-        # Skip web search entirely for natural conversation and engineering help
         research_bundle["summary"] = "Internal processing complete."
 
     if is_page_request and page_context:
@@ -479,10 +585,10 @@ def assistant():
             "excerpt": page_summary,
         }
 
+    # ---- BUILD PERSONA AND PROMPT ----
     recent_mem = load_memory(8)
     mem_str = " | ".join([f"{m['role']}: {m['text']}" for m in recent_mem])
     
-    # THE ENGINEERING PARTNER PERSONA
     system_instruction = (
         "You are JARVIS, an intelligent engineering companion and technical partner inspired by Iron Man's AI. "
         "Speak naturally, concisely, and with grounded expertise. Address the user as sir. "
@@ -491,7 +597,7 @@ def assistant():
     )
 
     context_parts = []
-    if research_bundle.get("summary") and category != "CONVERSATION":
+    if research_bundle.get("summary") and category not in ["CONVERSATION", "SCREEN_READ"]:
         context_parts.append(research_bundle["summary"])
     if research_bundle.get("news"):
         context_parts.append("Recent developments: " + research_bundle["news"])
@@ -502,22 +608,33 @@ def assistant():
         target = ((research_bundle.get("location") or {}).get("title") or extract_location_query(user_prompt) or "target location")
         prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nContext: {' '.join(context_parts)}\nRespond as if you have researched the location and are presenting it while opening a holographic globe focused on {target}."
         fallback_reply = f"Location acquired, sir. Bringing the globe online for {target}."
+        
+    elif category == "APP_CONTROL":
+        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nRespond by concisely confirming you are launching the requested application."
+        fallback_reply = f"Right away, sir. Launching {app_to_launch}."
+        
+    elif category == "SCREEN_READ":
+        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nLook at the provided image of the user's screen. Explain what is visible, focusing on engineering, CAD, code, or context."
+        fallback_reply = "Processing visual telemetry now, sir."
+        
     elif category == "RESEARCH":
-        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nContext: {' '.join(context_parts)}\nRespond as if you researched first and are presenting the findings through holographic system tabs."
+        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nContext: {' '.join(context_parts)}\nYou are a teacher and engineering partner. Explain this context in your own words conversationally. Do not just read the text."
         fallback_reply = "Research complete, sir. Presenting the relevant intelligence now."
+        
     else:
-        # Conversational / Engineering prompt
-        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nRespond directly and conversationally."
+        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nRespond directly, conversationally, and concisely."
         fallback_reply = "I am here and ready to assist, sir."
 
-    reply = fetch_assistant_reply(system_instruction, prompt_for_ollama, fallback_reply)
+    # ---- FETCH REPLY ----
+    images_list = [encoded_screen] if encoded_screen else None
+    reply = fetch_assistant_reply(system_instruction, prompt_for_ollama, fallback_reply, images=images_list)
     save_memory_entry("jarvis", reply)
 
     return jsonify({
         "status": "success",
         "category": category,
         "response": reply,
-        "research": research_bundle if category != "CONVERSATION" else {},
+        "research": research_bundle if category not in ["CONVERSATION", "APP_CONTROL"] else {},
     })
 
 
@@ -559,7 +676,7 @@ def chat():
     })
 
 # ==========================================
-# SAFE TTS ROUTE (Fixes 400 Errors)
+# SAFE TTS ROUTE
 # ==========================================
 @app.route("/tts", methods=["POST"])
 def tts():
@@ -569,7 +686,6 @@ def tts():
     if not text: 
         return jsonify({"error": "No text provided"}), 400
         
-    # Check if keys are set before attempting external request
     if not FISH_API_KEY or not FISH_VOICE_ID:
         return jsonify({"error": "Fish Audio keys unconfigured. Use browser TTS fallback."}), 400
 
@@ -592,15 +708,12 @@ def health():
 
 @app.route("/favicon.ico")
 def favicon():
-    # Suppress 404 noise in the browser console
     return Response(status=204)
 
 
-# Serve the existing HUD page directly from Flask
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 HUD_HTML_PATH = os.path.join(BASE_DIR, "hud.html")
 
-# Allowed extensions for static assets (prevents Python source exposure)
 _STATIC_EXTS = {".js", ".css", ".mp3", ".wav", ".ico", ".png", ".jpg", ".gif", ".svg", ".woff", ".woff2"}
 
 @app.route("/")
@@ -622,5 +735,7 @@ def static_assets(filename):
 if __name__ == "__main__":
     print("--------------------------------------------------")
     print(" JARVIS SERVER ONLINE | http://localhost:8000")
+    if SCREEN_CAPTURE_AVAILABLE:
+        print(" [SYSTEM] Screen Capture Vision Module: ONLINE")
     print("--------------------------------------------------")
     app.run(host="0.0.0.0", port=8000, debug=False)
