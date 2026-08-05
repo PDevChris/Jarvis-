@@ -83,6 +83,29 @@ def is_location_prompt(prompt):
     return any(hint in lower for hint in LOCATION_HINTS)
 
 
+# ---- NEW: CONVERSATIONAL & ENGINEERING DETECTOR ----
+def is_conversational_prompt(prompt):
+    lower = prompt.lower().strip()
+    
+    # Explicit research triggers that SHOULD use the web
+    research_triggers = ["what is", "who is", "tell me about", "latest", "news about", "search"]
+    if any(trigger in lower for trigger in research_triggers):
+        return False
+        
+    # Partner/Engineering triggers that should skip the web and just chat
+    chat_triggers = [
+        "hey jarvis", "hi jarvis", "hello", "morning", "evening", 
+        "trouble", "help me", "cad", "model", "design", "build", 
+        "code", "script", "error", "idea", "brainstorm", "partner", "how are you"
+    ]
+    
+    # Treat it as conversation if it matches chat triggers or is very short (greetings)
+    if any(trigger in lower for trigger in chat_triggers) or len(lower.split()) <= 4:
+        return True
+        
+    return False
+
+
 def should_probe_show_me_location(prompt):
     lower = prompt.lower().strip()
     if not lower.startswith("show me "):
@@ -400,6 +423,8 @@ def assistant():
     save_memory_entry("user", user_prompt)
 
     is_page_request = "webpage" in lower_prompt or "page" in lower_prompt or bool(page_context)
+    
+    # Determine the Intent Category
     category = "RESEARCH"
     if is_location_prompt(user_prompt):
         category = "LOCATION"
@@ -408,6 +433,8 @@ def assistant():
         probe_result = location_info_internal(query=probe_query) if probe_query else None
         if probe_result and probe_result.get("coords", {}).get("lat") is not None and probe_result.get("coords", {}).get("lon") is not None:
             category = "LOCATION"
+    elif is_conversational_prompt(user_prompt):
+        category = "CONVERSATION"
 
     research_bundle = {
         "summary": "",
@@ -418,6 +445,7 @@ def assistant():
         "page": None,
     }
 
+    # Execute based on Category
     if category == "LOCATION":
         location_query = extract_location_query(user_prompt)
         if location_context.get("latitude") is not None and location_context.get("longitude") is not None and not location_query:
@@ -428,8 +456,9 @@ def assistant():
         research_bundle["summary"] = (location_result or {}).get("description", "")
         research_bundle["images"] = (location_result or {}).get("images", [])
         research_bundle["links"] = (location_result or {}).get("links", [])
-    else:
-        research_query = user_prompt.replace("Jarvis", "").strip()
+        
+    elif category == "RESEARCH":
+        research_query = user_prompt.replace("Jarvis", "").replace("JARVIS", "").strip()
         text_data, news_data, image_urls = fetch_live_data_and_images(research_query)
         research_bundle["summary"] = text_data or "I have gathered background context, sir."
         research_bundle["news"] = news_data
@@ -437,6 +466,10 @@ def assistant():
         research_bundle["links"] = [
             {"label": "Open web search", "url": f"https://www.google.com/search?q={requests.utils.quote(research_query)}"}
         ]
+        
+    elif category == "CONVERSATION":
+        # Skip web search entirely for natural conversation and engineering help
+        research_bundle["summary"] = "Internal processing complete."
 
     if is_page_request and page_context:
         page_summary = page_context.get("selection") or page_context.get("body_text", "")[:1500]
@@ -448,9 +481,18 @@ def assistant():
 
     recent_mem = load_memory(8)
     mem_str = " | ".join([f"{m['role']}: {m['text']}" for m in recent_mem])
-    system_instruction = "You are JARVIS. Speak like Iron Man's technical AI aide. Be concise, precise, and cinematic. Address the user as sir. Keep replies under 45 words."
+    
+    # THE ENGINEERING PARTNER PERSONA
+    system_instruction = (
+        "You are JARVIS, an intelligent engineering companion and technical partner inspired by Iron Man's AI. "
+        "Speak naturally, concisely, and with grounded expertise. Address the user as sir. "
+        "Think collaboratively with the user on engineering problems, mechanical design, circuitry, and physics. "
+        "Keep replies highly direct and under 40 words unless explaining a specific technical concept."
+    )
 
-    context_parts = [research_bundle.get("summary", "")]
+    context_parts = []
+    if research_bundle.get("summary") and category != "CONVERSATION":
+        context_parts.append(research_bundle["summary"])
     if research_bundle.get("news"):
         context_parts.append("Recent developments: " + research_bundle["news"])
     if research_bundle.get("page"):
@@ -460,9 +502,13 @@ def assistant():
         target = ((research_bundle.get("location") or {}).get("title") or extract_location_query(user_prompt) or "target location")
         prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nContext: {' '.join(context_parts)}\nRespond as if you have researched the location and are presenting it while opening a holographic globe focused on {target}."
         fallback_reply = f"Location acquired, sir. Bringing the globe online for {target}."
-    else:
+    elif category == "RESEARCH":
         prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nContext: {' '.join(context_parts)}\nRespond as if you researched first and are presenting the findings through holographic system tabs."
         fallback_reply = "Research complete, sir. Presenting the relevant intelligence now."
+    else:
+        # Conversational / Engineering prompt
+        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nRespond directly and conversationally."
+        fallback_reply = "I am here and ready to assist, sir."
 
     reply = fetch_assistant_reply(system_instruction, prompt_for_ollama, fallback_reply)
     save_memory_entry("jarvis", reply)
@@ -471,7 +517,7 @@ def assistant():
         "status": "success",
         "category": category,
         "response": reply,
-        "research": research_bundle,
+        "research": research_bundle if category != "CONVERSATION" else {},
     })
 
 
