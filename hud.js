@@ -1,4 +1,4 @@
-  // ============ CORE STATE ============
+// ============ CORE STATE ============
   let currentState = "IDLE";
   let isActiveSession = false;
   let initialized = false;
@@ -32,7 +32,6 @@
     connStatus.querySelector(".conn-dot").style.animation = "none";
     connStatus.style.borderColor = "rgba(0,225,255,0.35)";
     connStatus.style.color = "var(--hud-cyan)";
-    // Fade out after brief display
     setTimeout(() => connStatus.classList.add("online"), 1800);
     if (bootStarted) logDiagnostic("> backend reconnected", false);
   });
@@ -62,22 +61,32 @@
     document.getElementById(id).classList.remove("visible");
   }
 
-  function registerFloatingDismiss(panel) {
-    const rect = panel.getBoundingClientRect();
-    const threshold = 80;
-    const offscreen = rect.right < threshold || rect.left > window.innerWidth - threshold || rect.bottom < threshold || rect.top > window.innerHeight - threshold;
-    if (offscreen) {
-      panel.classList.add("window-dismiss");
-      setTimeout(() => panel.remove(), 180);
-      return true;
-    }
-    return false;
+  // --- NEW WINDOW MANAGEMENT & PHYSICS ---
+  let activeFloatingWindows = [];
+
+  function dismissWindow(panel) {
+    panel.classList.add("window-dismiss");
+    setTimeout(() => {
+      activeFloatingWindows = activeFloatingWindows.filter(w => w !== panel);
+      panel.remove();
+    }, 220);
   }
 
-  function registerPanelChrome(panel, closeAction) {
+  function registerPanelChrome(panel) {
     const closeBtn = panel.querySelector(".holo-panel-close");
-    if (closeBtn) closeBtn.addEventListener("click", () => closeAction());
-    makePanelDraggable(panel, { allowDismiss: true, onDrop: () => registerFloatingDismiss(panel) });
+    if (closeBtn) closeBtn.addEventListener("click", () => dismissWindow(panel));
+
+    const pinBtn = panel.querySelector(".holo-pin-btn");
+    if (pinBtn) {
+      pinBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isPinned = panel.dataset.pinned === "true";
+        panel.dataset.pinned = String(!isPinned);
+        pinBtn.classList.toggle("pinned", !isPinned);
+        pinBtn.textContent = !isPinned ? "PINNED 📌" : "PIN 📌";
+      });
+    }
+    makePanelDraggable(panel);
   }
 
   function createFloatingWindow(config) {
@@ -87,7 +96,9 @@
     const body = fragment.querySelector(".holo-body-text");
 
     panel.dataset.windowIndex = String(floatingWindowIndex++);
+    panel.dataset.pinned = "false";
     title.textContent = config.title;
+
     if (typeof config.content === "string") {
       body.innerHTML = config.content;
     } else {
@@ -96,10 +107,17 @@
 
     holoWorkspace.appendChild(fragment);
     const createdPanel = holoWorkspace.lastElementChild;
-    createdPanel.style.left = `${config.left ?? (140 + (floatingWindowIndex % 4) * 120)}px`;
-    createdPanel.style.top = `${config.top ?? (80 + (floatingWindowIndex % 3) * 80)}px`;
+    
+    // Multi-window cascading offset placement
+    const cascadeX = 140 + (floatingWindowIndex % 4) * 60;
+    const cascadeY = 90 + (floatingWindowIndex % 3) * 50;
+    
+    createdPanel.style.left = `${config.left ?? cascadeX}px`;
+    createdPanel.style.top = `${config.top ?? cascadeY}px`;
     createdPanel.style.transform = "scale(1)";
-    registerPanelChrome(createdPanel, () => createdPanel.remove());
+    
+    registerPanelChrome(createdPanel);
+    activeFloatingWindows.push(createdPanel);
     playPing();
     return createdPanel;
   }
@@ -125,17 +143,20 @@
     });
   }
 
-  function makePanelDraggable(panel, options) {
+  function makePanelDraggable(panel) {
     const header = panel.querySelector(".holo-panel-header");
     if (!header) return;
+    
     let dragging = false;
-    let startX = 0;
-    let startY = 0;
-    let originLeft = 0;
-    let originTop = 0;
+    let startX = 0, startY = 0;
+    let originLeft = 0, originTop = 0;
+    let vx = 0, vy = 0;
+    let lastTime = 0;
 
     header.addEventListener("pointerdown", (event) => {
-      if (event.target.closest(".holo-panel-close")) return;
+      // Don't drag if clicking buttons
+      if (event.target.closest(".holo-panel-actions") || event.target.closest(".holo-panel-close")) return;
+      
       dragging = true;
       panel.classList.add("dragging");
       startX = event.clientX;
@@ -143,22 +164,55 @@
       const rect = panel.getBoundingClientRect();
       originLeft = rect.left;
       originTop = rect.top;
+      vx = 0; vy = 0;
+      lastTime = performance.now();
       header.setPointerCapture(event.pointerId);
     });
 
     header.addEventListener("pointermove", (event) => {
       if (!dragging) return;
+      const now = performance.now();
+      const dt = Math.max((now - lastTime) / 1000, 0.001);
+      
       const deltaX = event.clientX - startX;
       const deltaY = event.clientY - startY;
-      panel.style.left = `${originLeft + deltaX}px`;
-      panel.style.top = `${originTop + deltaY}px`;
+      const currentLeft = originLeft + deltaX;
+      const currentTop = originTop + deltaY;
+      
+      // Calculate velocity for momentum toss
+      vx = (event.clientX - (startX + (currentLeft - originLeft))) / dt;
+      vy = (event.clientY - (startY + (currentTop - originTop))) / dt;
+      lastTime = now;
+      
+      panel.style.left = `${currentLeft}px`;
+      panel.style.top = `${currentTop}px`;
       panel.style.transform = "translate(0, 0)";
     });
 
     const finishDrag = () => {
+      if (!dragging) return;
       dragging = false;
       panel.classList.remove("dragging");
-      if (options?.allowDismiss) options.onDrop?.();
+
+      // Fling off-screen to delete
+      const rect = panel.getBoundingClientRect();
+      const threshold = 60;
+      const isOffscreen = rect.right < threshold || rect.left > window.innerWidth - threshold || rect.bottom < threshold || rect.top > window.innerHeight - threshold;
+
+      if (isOffscreen) {
+        dismissWindow(panel);
+        return;
+      }
+
+      // Coasting momentum physics
+      if (Math.abs(vx) > 150 || Math.abs(vy) > 150) {
+        const targetLeft = rect.left + vx * 0.12;
+        const targetTop = rect.top + vy * 0.12;
+        panel.style.transition = "left 300ms ease-out, top 300ms ease-out";
+        panel.style.left = `${Math.max(10, Math.min(window.innerWidth - rect.width - 10, targetLeft))}px`;
+        panel.style.top = `${Math.max(10, Math.min(window.innerHeight - rect.height - 10, targetTop))}px`;
+        setTimeout(() => { panel.style.transition = ""; }, 300);
+      }
     };
 
     header.addEventListener("pointerup", finishDrag);
@@ -166,6 +220,14 @@
   }
 
   document.querySelectorAll(".holo-panel").forEach(panel => makePanelDraggable(panel));
+
+  function cleanupUnpinnedWindows() {
+    setTimeout(() => {
+      activeFloatingWindows.forEach(panel => {
+        if (panel.dataset.pinned !== "true") dismissWindow(panel);
+      });
+    }, 3500);
+  }
 
   // ============ SOUND CLIPS ============
   function playClip(src, volume) {
@@ -240,7 +302,7 @@
     const ring = document.getElementById("wakeRing");
     const label = document.getElementById("wakeLabel");
     ring.classList.remove("play"); label.classList.remove("play");
-    void ring.offsetWidth; void label.offsetWidth; // force reflow to re-trigger animation
+    void ring.offsetWidth; void label.offsetWidth; 
     setTimeout(() => label.classList.add("play"), 80);
     ring.classList.add("play");
     setTimeout(() => {
@@ -277,7 +339,12 @@
     if (!jarvisVoice) loadVoice();
     if (jarvisVoice) utterance.voice = jarvisVoice;
     utterance.pitch = 0.9; utterance.rate = 1.02;
-    utterance.onend = () => { currentState = "IDLE"; statusText.textContent = "SYSTEM READY"; if (onComplete) onComplete(); };
+    utterance.onend = () => { 
+      currentState = "IDLE"; 
+      statusText.textContent = "SYSTEM READY"; 
+      cleanupUnpinnedWindows(); 
+      if (onComplete) onComplete(); 
+    };
     speechSynthesis.speak(utterance);
   }
 
@@ -304,6 +371,7 @@
         URL.revokeObjectURL(url);
         currentState = "IDLE";
         statusText.textContent = "SYSTEM READY";
+        cleanupUnpinnedWindows();
         if (onComplete) onComplete();
       };
       audioEl.onerror = () => speakBrowserVoice(text, onComplete);
