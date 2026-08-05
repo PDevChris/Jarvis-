@@ -97,6 +97,11 @@
 
     panel.dataset.windowIndex = String(floatingWindowIndex++);
     panel.dataset.pinned = "false";
+    
+    // Give each window a random starting phase for the idle float animation
+    panel.dataset.phaseX = Math.random() * Math.PI * 2;
+    panel.dataset.phaseY = Math.random() * Math.PI * 2;
+
     title.textContent = config.title;
 
     if (typeof config.content === "string") {
@@ -108,13 +113,12 @@
     holoWorkspace.appendChild(fragment);
     const createdPanel = holoWorkspace.lastElementChild;
     
-    // Multi-window cascading offset placement
     const cascadeX = 140 + (floatingWindowIndex % 4) * 60;
     const cascadeY = 90 + (floatingWindowIndex % 3) * 50;
     
     createdPanel.style.left = `${config.left ?? cascadeX}px`;
     createdPanel.style.top = `${config.top ?? cascadeY}px`;
-    createdPanel.style.transform = "scale(1)";
+    createdPanel.style.transform = "scale(1) translate(0px, 0px)";
     
     registerPanelChrome(createdPanel);
     activeFloatingWindows.push(createdPanel);
@@ -154,7 +158,6 @@
     let lastTime = 0;
 
     header.addEventListener("pointerdown", (event) => {
-      // Don't drag if clicking buttons
       if (event.target.closest(".holo-panel-actions") || event.target.closest(".holo-panel-close")) return;
       
       dragging = true;
@@ -179,14 +182,14 @@
       const currentLeft = originLeft + deltaX;
       const currentTop = originTop + deltaY;
       
-      // Calculate velocity for momentum toss
       vx = (event.clientX - (startX + (currentLeft - originLeft))) / dt;
       vy = (event.clientY - (startY + (currentTop - originTop))) / dt;
       lastTime = now;
       
       panel.style.left = `${currentLeft}px`;
       panel.style.top = `${currentTop}px`;
-      panel.style.transform = "translate(0, 0)";
+      // Pause the idle drift while dragging
+      panel.style.transform = "scale(1) translate(0px, 0px)";
     });
 
     const finishDrag = () => {
@@ -194,20 +197,30 @@
       dragging = false;
       panel.classList.remove("dragging");
 
-      // Fling off-screen to delete
       const rect = panel.getBoundingClientRect();
       const threshold = 60;
-      const isOffscreen = rect.right < threshold || rect.left > window.innerWidth - threshold || rect.bottom < threshold || rect.top > window.innerHeight - threshold;
-
-      if (isOffscreen) {
+      
+      // 1. Did the user drag it off screen slowly?
+      if (rect.right < threshold || rect.left > window.innerWidth - threshold || rect.bottom < threshold || rect.top > window.innerHeight - threshold) {
         dismissWindow(panel);
         return;
       }
 
-      // Coasting momentum physics
+      // 2. Momentum Coasting Physics
       if (Math.abs(vx) > 150 || Math.abs(vy) > 150) {
         const targetLeft = rect.left + vx * 0.12;
         const targetTop = rect.top + vy * 0.12;
+        
+        // Did the user fling it hard enough to go off screen? Predict the landing spot.
+        if (targetLeft + rect.width < threshold || targetLeft > window.innerWidth - threshold || targetTop + rect.height < threshold || targetTop > window.innerHeight - threshold) {
+            panel.style.transition = "left 300ms ease-out, top 300ms ease-out";
+            panel.style.left = `${targetLeft}px`;
+            panel.style.top = `${targetTop}px`;
+            dismissWindow(panel);
+            return;
+        }
+
+        // If it stays on screen, gently clamp it to the edges
         panel.style.transition = "left 300ms ease-out, top 300ms ease-out";
         panel.style.left = `${Math.max(10, Math.min(window.innerWidth - rect.width - 10, targetLeft))}px`;
         panel.style.top = `${Math.max(10, Math.min(window.innerHeight - rect.height - 10, targetTop))}px`;
@@ -228,6 +241,24 @@
       });
     }, 3500);
   }
+
+  // IDLE HOLOGRAPHIC DRIFT ANIMATION
+  function animateIdleWindows() {
+    const time = performance.now() * 0.001; // seconds
+    activeFloatingWindows.forEach(panel => {
+      // Only drift if the window is NOT being dragged and NOT currently deleting
+      if (!panel.classList.contains("dragging") && !panel.classList.contains("window-dismiss")) {
+        const px = parseFloat(panel.dataset.phaseX || 0);
+        const py = parseFloat(panel.dataset.phaseY || 0);
+        // Calculate a gentle sine-wave hover (max 5px left/right, 8px up/down)
+        const dx = Math.sin(time * 0.8 + px) * 5;
+        const dy = Math.sin(time * 0.6 + py) * 8;
+        panel.style.transform = `scale(1) translate(${dx}px, ${dy}px)`;
+      }
+    });
+    requestAnimationFrame(animateIdleWindows);
+  }
+  requestAnimationFrame(animateIdleWindows); // Start the loop
 
   // ============ SOUND CLIPS ============
   function playClip(src, volume) {
