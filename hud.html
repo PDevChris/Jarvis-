@@ -195,10 +195,7 @@
   }
   @media (max-width: 1100px) { #diagLog { display: none; } }
 
-  /* ============ MODULAR HOLOGRAPHIC PANEL SYSTEM ============
-     Any future panel (weather detail, CAD preview, satellite feed, etc.)
-     can reuse .holo-panel + the openHoloPanel()/closeHoloPanel() JS helpers -
-     just give it a unique id and build the inner HTML. */
+  /* ============ MODULAR HOLOGRAPHIC PANEL SYSTEM ============ */
   .holo-dock {
     position: fixed; top: 96px; left: 50%; transform: translateX(-50%);
     z-index: 35; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
@@ -236,17 +233,32 @@
     overflow-y: auto;
   }
   .holo-panel.visible { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
+  
+  /* --- UPGRADED FLOATING WINDOW STYLES --- */
   .holo-panel.floating {
     position: absolute;
     transform: scale(0.92);
-    min-width: 260px;
-    width: min(34vw, 420px);
-    max-height: 54vh;
+    min-width: 280px;
+    min-height: 160px;
+    width: min(36vw, 440px);
+    max-height: 58vh;
+    background: rgba(1, 14, 32, 0.78);
+    border: 1px solid var(--hud-border);
+    box-shadow: 0 0 25px rgba(0, 225, 255, 0.22), inset 0 0 15px rgba(0, 225, 255, 0.08);
+    backdrop-filter: blur(16px);
+    border-radius: 4px;
     pointer-events: auto;
+    resize: both;
+    overflow: hidden;
+    transition: box-shadow 0.3s ease, border-color 0.3s ease;
     animation: holoWindowIn 380ms ease;
   }
   .holo-panel.floating.visible {
     transform: scale(1);
+  }
+  .holo-panel.floating:hover {
+    border-color: var(--hud-cyan);
+    box-shadow: 0 0 35px rgba(0, 225, 255, 0.35), inset 0 0 20px rgba(0, 225, 255, 0.12);
   }
   @keyframes holoWindowIn {
     from { opacity: 0; transform: scale(0.88) translateY(16px); }
@@ -254,16 +266,46 @@
   }
 
   .holo-panel.dragging { transition: none; }
+  
   .holo-panel-header {
     display: flex; justify-content: space-between; align-items: center;
     border-bottom: 2px solid var(--hud-border); padding-bottom: 10px; margin-bottom: 14px;
-    cursor: move;
+    cursor: grab;
+    user-select: none;
   }
+  .holo-panel-header:active {
+    cursor: grabbing;
+  }
+  
   .holo-panel-title {
     font-family: 'Eurostile', 'BankGothic Md BT', 'Segoe UI', sans-serif; font-weight: 900; font-size: clamp(13px, 2vw, 16px);
     letter-spacing: 2px; color: #fff; text-shadow: 0 0 10px var(--hud-cyan);
     text-transform: uppercase;
   }
+
+  /* --- NEW HEADER ACTION CONTROLS --- */
+  .holo-panel-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .holo-pin-btn {
+    font-size: 10px;
+    border: 1px solid var(--hud-border);
+    padding: 3px 7px;
+    cursor: pointer;
+    color: var(--hud-cyan);
+    background: rgba(0, 225, 255, 0.05);
+    transition: all 0.2s ease;
+    font-family: 'Eurostile', 'BankGothic Md BT', 'Segoe UI', sans-serif;
+  }
+  .holo-pin-btn.pinned {
+    background: rgba(0, 225, 255, 0.3);
+    border-color: var(--hud-cyan);
+    box-shadow: 0 0 8px var(--hud-cyan);
+    color: #fff;
+  }
+  
   .holo-panel-close {
     font-family: 'Eurostile', 'BankGothic Md BT', 'Segoe UI', sans-serif; font-size: 11px; letter-spacing: 1px;
     border: 1px solid var(--hud-cyan); padding: 4px 10px; cursor: pointer;
@@ -292,14 +334,13 @@
     background: rgba(0,225,255,0.05);
   }
   .tab-link:hover { background: rgba(0,225,255,0.16); }
+  
+  /* --- UPGRADED DISMISS ANIMATION FOR OFF-SCREEN FLING --- */
   .window-dismiss {
-    opacity: 0;
-    transform: scale(0.7);
-    transition: opacity 160ms ease, transform 160ms ease;
-  }
-  .window-dismiss.visible {
-    opacity: 1;
-    transform: scale(1);
+    opacity: 0 !important;
+    transform: scale(0.6) translateY(30px) !important;
+    filter: blur(10px) brightness(2);
+    transition: all 220ms cubic-bezier(0.4, 0, 0.2, 1) !important;
   }
 
   /* Globe panel gets a taller, map-friendly layout */
