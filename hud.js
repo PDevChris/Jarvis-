@@ -716,14 +716,23 @@
       stopProcessingChatter();
       transcript.textContent = "JARVIS: " + payload.response;
 
+      // ---- INTELLIGENT WINDOW ROUTING ----
       if (payload.category === "LOCATION") {
         await tryLocationIntent(question);
-      } else {
-        openResearchWindows(question, payload);
+      } else if (payload.category === "RESEARCH" || payload.category === "SCREEN_READ") {
+        // Only open holographic tabs if there is actual visual/research data to show
+        if (payload.research && (payload.research.summary || payload.research.images?.length)) {
+          openResearchWindows(question, payload);
+        }
       }
+      // Do nothing regarding windows for CONVERSATION or APP_CONTROL. 
 
       saveToMemory("jarvis", payload.response);
-      speak(payload.response, () => { statusText.textContent = "SYSTEM ACTIVE"; centerText.classList.remove("active"); isActiveSession = false; });
+      speak(payload.response, () => { 
+        statusText.textContent = "SYSTEM ACTIVE"; 
+        centerText.classList.remove("active"); 
+        isActiveSession = false; 
+      });
     } catch (err) {
       stopProcessingChatter();
       const offline = err.message?.includes("Failed to fetch") || !apiClient.connected;
