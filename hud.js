@@ -10,14 +10,10 @@
   const holoWorkspace = document.getElementById("holoWorkspace");
   const floatingPanelTemplate = document.getElementById("floatingPanelTemplate");
 
-  document.querySelectorAll("[data-window-type]").forEach((button) => {
-    button.addEventListener("click", () => spawnUtilityWindow(button.dataset.windowType));
-  });
   document.querySelectorAll("[data-close-panel]").forEach((button) => {
     button.addEventListener("click", () => closeHoloPanel(button.dataset.closePanel));
   });
 
-  const SYSTEM_PROMPT = "You are JARVIS. Address the user as 'sir'. Dry British wit, polite, technically precise.";
   const isExtension = typeof chrome !== "undefined" && !!chrome.runtime?.id;
   let floatingWindowIndex = 0;
   let activeMapMarker = null;
@@ -103,8 +99,10 @@
 
     holoWorkspace.appendChild(fragment);
     const createdPanel = holoWorkspace.lastElementChild;
-    const cascadeX = 140 + (floatingWindowIndex % 4) * 60;
-    const cascadeY = 90 + (floatingWindowIndex % 3) * 50;
+    
+    // Spawn roughly in the center with a slight random offset so they don't perfectly overlap
+    const cascadeX = Math.max(20, window.innerWidth / 2 - 220 + (Math.random() * 80 - 40));
+    const cascadeY = Math.max(80, window.innerHeight / 2 - 180 + (Math.random() * 60 - 30));
     
     createdPanel.style.left = `${config.left ?? cascadeX}px`;
     createdPanel.style.top = `${config.top ?? cascadeY}px`;
@@ -114,16 +112,6 @@
     activeFloatingWindows.push(createdPanel);
     playPing();
     return createdPanel;
-  }
-
-  function spawnUtilityWindow(type) {
-    if (type === "info") {
-      createFloatingWindow({ title: "INFORMATION STREAM", content: `<div class="holo-bullet-list"><div>Awaiting live intelligence, sir.</div><div>Ask about a topic, place, or active webpage.</div></div>` });
-    } else if (type === "data") {
-      createFloatingWindow({ title: "SYSTEM DATA", content: `<div class="holo-bullet-list"><div>CPU ${Math.round(simState.cpu)}%</div><div>MEMORY ${Math.round(simState.mem)}%</div><div>NETWORK ${Math.round(simState.net)}%</div></div>` });
-    } else {
-      createFloatingWindow({ title: "WEBSITE ACTIONS", content: `<div class="holo-bullet-list"><div>Use voice command: explain this webpage</div><div>Use voice command: open the official site</div></div>` });
-    }
   }
 
   function makePanelDraggable(panel) {
@@ -314,12 +302,9 @@
   }
   function startListening() { if (!recognition) return; currentState = "LISTENING"; statusText.textContent = "LISTENING..."; try { recognition.start(); } catch (e) {} }
 
-  // ============ INTENT DETECTION ============
+  // ============ INTENT DETECTION & HELPERS ============
   const LOCATION_PATTERN = /\b(where is|where are|where am i|take me to|show me|locate|map of|fly to|near me|around me)\b/i;
-  const RESEARCH_PATTERN = /\b(what is|who is|tell me about|explain|show me|latest|news about)\b/i;
-
   function extractLocationQuery(text) { return text.replace(/jarvis[:,]?/i, "").replace(LOCATION_PATTERN, "").replace(/\b(on the map|the map|the city|the country)\b/gi, "").replace(/\s+/g, " ").trim(); }
-  function extractResearchQuery(text) { return text.replace(RESEARCH_PATTERN, "").trim(); }
   function isCurrentLocationRequest(text) { return /\b(where am i|my location|near me|around me)\b/i.test(text); }
 
   async function getCurrentCoordinates() {
@@ -330,22 +315,52 @@
   }
 
   function renderImageGrid(images) {
-    if (!images?.length) return `<div class="holo-bullet-list"><div>No visual intelligence available yet.</div></div>`;
+    if (!images?.length) return "";
     return `<div class="holo-image-grid">${images.slice(0, 6).map(src => `<img src="${src}" class="holo-img" onerror="this.style.display='none'" />`).join("")}</div>`;
   }
   function renderLinkGrid(links) {
-    if (!links?.length) return `<div class="holo-bullet-list"><div>No external references returned.</div></div>`;
+    if (!links?.length) return "";
     return `<div class="tab-link-grid">${links.map(link => `<a class="tab-link" href="${link.url}" target="_blank" rel="noreferrer">${link.label}</a>`).join("")}</div>`;
   }
 
+  // --- UNIFIED HOLOGRAPHIC WINDOW BUILDER ---
   function openResearchWindows(question, payload) {
     const research = payload.research || {};
-    const baseLeft = 80 + Math.floor(Math.random() * 80), baseTop = 90 + Math.floor(Math.random() * 40);
+    let combinedContent = "";
 
-    if (research.summary) createFloatingWindow({ title: "INFORMATION", left: baseLeft, top: baseTop, content: `<div>${research.summary}</div>` });
-    if (research.images?.length) createFloatingWindow({ title: "IMAGES", left: baseLeft + 120, top: baseTop + 220, content: renderImageGrid(research.images) });
-    if (research.links?.length) createFloatingWindow({ title: "WEBSITE", left: baseLeft + 520, top: baseTop + 180, content: renderLinkGrid(research.links) });
-    playHoloOpen();
+    if (research.summary) {
+      combinedContent += `<div class="holo-section-label">// ANALYSIS</div>`;
+      combinedContent += `<div style="margin-bottom: 12px; color: #dfffff;">${research.summary.replace(/\n/g, '<br>')}</div>`;
+    }
+    if (research.page?.excerpt) {
+      combinedContent += `<div class="holo-section-label">// VISUAL CONTEXT DETECTED</div>`;
+      combinedContent += `<div style="margin-bottom: 12px; color: #00e1ff; font-style: italic;">${research.page.excerpt}</div>`;
+    }
+    if (research.news) {
+      combinedContent += `<div class="holo-section-label">// RECENT INTELLIGENCE</div>`;
+      const newsItems = research.news.split("\n").filter(Boolean).map(item => `<div>${item}</div>`).join("");
+      combinedContent += `<div class="holo-bullet-list" style="margin-bottom: 12px;">${newsItems}</div>`;
+    }
+    if (research.images?.length) {
+      combinedContent += `<div class="holo-section-label">// VISUAL DATA</div>`;
+      combinedContent += renderImageGrid(research.images);
+    }
+    if (research.links?.length) {
+      combinedContent += `<div class="holo-section-label">// EXTERNAL DATALINKS</div>`;
+      combinedContent += renderLinkGrid(research.links);
+    }
+
+    if (combinedContent) {
+      let windowTitle = "INTELLIGENCE";
+      if (payload.category === "MARKET_RESEARCH") windowTitle = "MARKET ANALYSIS";
+      if (payload.category === "SCREEN_READ") windowTitle = "VISUAL TELEMETRY";
+
+      createFloatingWindow({
+        title: windowTitle,
+        content: combinedContent
+      });
+      playHoloOpen();
+    }
   }
 
   function clearExistingMapMarker() { if (activeMapMarker) { activeMapMarker.remove(); activeMapMarker = null; } }
@@ -359,7 +374,6 @@
   }
 
   async function tryLocationIntent(question) {
-    if (!LOCATION_PATTERN.test(question)) return false;
     const place = extractLocationQuery(question);
     const currentCoords = isCurrentLocationRequest(question) ? await getCurrentCoordinates() : null;
     if (!place && !currentCoords) return false;
@@ -416,15 +430,15 @@
       stopProcessingChatter();
       transcript.textContent = "JARVIS: " + payload.response;
 
-      // STRICT ROUTING: ONLY open tabs if the category is RESEARCH or SCREEN_READ
+      // STRICT ROUTING: ONLY open tabs if the category requires it
       if (payload.category === "LOCATION") {
         await tryLocationIntent(question);
-      } else if (payload.category === "RESEARCH" || payload.category === "SCREEN_READ") {
+      } else if (["RESEARCH", "MARKET_RESEARCH", "SCREEN_READ"].includes(payload.category)) {
         if (payload.research && (payload.research.summary || payload.research.images?.length)) {
           openResearchWindows(question, payload);
         }
       } 
-      // Do nothing for CONVERSATION or APP_CONTROL - no tabs!
+      // Do absolutely nothing visually for CONVERSATION or APP_CONTROL.
 
       saveToMemory("jarvis", payload.response);
       speak(payload.response, () => { statusText.textContent = "SYSTEM ACTIVE"; centerText.classList.remove("active"); isActiveSession = false; });
