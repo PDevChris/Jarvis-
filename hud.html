@@ -105,7 +105,7 @@
   .user-badge .title { font-size: 10px; font-weight: bold; letter-spacing: 1px; white-space: nowrap; }
   .user-badge .subtitle { font-size: 8px; opacity: 0.7; white-space: nowrap; }
 
-  /* ---------- DENSE CARD STACKS (hidden on narrow screens) ---------- */
+  /* ---------- DENSE CARD STACKS ---------- */
   .card-stack {
     position: fixed; top: 70px; width: 210px; z-index: 5;
     display: flex; flex-direction: column; gap: 10px; pointer-events: none;
@@ -136,7 +136,7 @@
   #weatherWidget .temp-value { font-size: 18px; font-weight: bold; }
   @media (max-width: 1100px) { #weatherWidget { display: none; } }
 
-  /* ---------- CENTER STATUS TEXT (fixed clipping issues) ---------- */
+  /* ---------- CENTER STATUS TEXT ---------- */
   .center-overlay-text {
     position: fixed; top: 50%; left: 50%;
     transform: translate(-50%, clamp(140px, 22vh, 210px));
@@ -196,19 +196,6 @@
   @media (max-width: 1100px) { #diagLog { display: none; } }
 
   /* ============ MODULAR HOLOGRAPHIC PANEL SYSTEM ============ */
-  .holo-dock {
-    position: fixed; top: 96px; left: 50%; transform: translateX(-50%);
-    z-index: 35; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
-    pointer-events: auto;
-  }
-  .holo-chip {
-    border: 1px solid var(--hud-cyan); background: rgba(0,225,255,0.08);
-    color: var(--hud-cyan); font-family: 'Eurostile', 'BankGothic Md BT', 'Segoe UI', sans-serif; font-size: 9px;
-    letter-spacing: 1.5px; padding: 6px 12px; cursor: pointer; text-transform: uppercase;
-    box-shadow: 0 0 10px rgba(0,225,255,0.15);
-  }
-  .holo-chip:hover { background: rgba(0,225,255,0.16); }
-
   .holo-workspace {
     position: fixed;
     inset: 90px 24px 48px;
@@ -234,15 +221,15 @@
   }
   .holo-panel.visible { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
   
-  /* --- UPGRADED FLOATING WINDOW STYLES --- */
+  /* ======== GLASS & GLOW PHYSICS WINDOW STYLES ======== */
   .holo-panel.floating {
     position: absolute;
     transform: scale(0.92);
     min-width: 280px;
     min-height: 160px;
-    width: min(36vw, 440px);
-    max-height: 58vh;
-    background: rgba(1, 14, 32, 0.78);
+    width: min(36vw, 480px);
+    max-height: 65vh;
+    background: rgba(1, 14, 32, 0.85);
     border: 1px solid var(--hud-border);
     box-shadow: 0 0 25px rgba(0, 225, 255, 0.22), inset 0 0 15px rgba(0, 225, 255, 0.08);
     backdrop-filter: blur(16px);
@@ -269,7 +256,8 @@
   
   .holo-panel-header {
     display: flex; justify-content: space-between; align-items: center;
-    border-bottom: 2px solid var(--hud-border); padding-bottom: 10px; margin-bottom: 14px;
+    border-bottom: 1px solid var(--hud-border); padding-bottom: 8px; margin-bottom: 14px;
+    background: rgba(0, 225, 255, 0.06);
     cursor: grab;
     user-select: none;
   }
@@ -282,49 +270,49 @@
     letter-spacing: 2px; color: #fff; text-shadow: 0 0 10px var(--hud-cyan);
     text-transform: uppercase;
   }
-
-  /* --- NEW HEADER ACTION CONTROLS --- */
+  
   .holo-panel-actions {
     display: flex;
     gap: 6px;
     align-items: center;
   }
-  .holo-pin-btn {
-    font-size: 10px;
-    border: 1px solid var(--hud-border);
-    padding: 3px 7px;
-    cursor: pointer;
-    color: var(--hud-cyan);
-    background: rgba(0, 225, 255, 0.05);
+  
+  .holo-pin-btn, .holo-panel-close {
+    font-family: 'Eurostile', 'BankGothic Md BT', 'Segoe UI', sans-serif; font-size: 10px; letter-spacing: 1px;
+    border: 1px solid var(--hud-border); padding: 4px 10px; cursor: pointer;
+    color: var(--hud-cyan); background: rgba(0,225,255,0.05); flex-shrink: 0;
     transition: all 0.2s ease;
-    font-family: 'Eurostile', 'BankGothic Md BT', 'Segoe UI', sans-serif;
   }
+  .holo-pin-btn:hover, .holo-panel-close:hover { background: var(--hud-cyan); color: #000; }
+  
   .holo-pin-btn.pinned {
     background: rgba(0, 225, 255, 0.3);
     border-color: var(--hud-cyan);
     box-shadow: 0 0 8px var(--hud-cyan);
     color: #fff;
   }
-  
-  .holo-panel-close {
-    font-family: 'Eurostile', 'BankGothic Md BT', 'Segoe UI', sans-serif; font-size: 11px; letter-spacing: 1px;
-    border: 1px solid var(--hud-cyan); padding: 4px 10px; cursor: pointer;
-    color: var(--hud-cyan); background: rgba(0,225,255,0.06); flex-shrink: 0;
-  }
-  .holo-panel-close:hover { background: var(--hud-cyan); color: #000; }
 
+  .window-dismiss {
+    opacity: 0 !important;
+    transform: scale(0.6) translateY(30px) !important;
+    filter: blur(10px) brightness(2);
+    transition: all 220ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+
+  /* ======== CONTENT STYLES INSIDE WINDOWS ======== */
   .holo-section-label {
     font-family: 'Eurostile', 'BankGothic Md BT', 'Segoe UI', sans-serif; font-size: 10px; letter-spacing: 2px;
     color: var(--hud-cyan); opacity: 0.8; margin: 14px 0 6px;
   }
-  .holo-body-text { font-size: 13px; line-height: 1.6; color: #dfffff; }
-  .holo-image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 8px; }
-  .holo-img { width: 100%; height: 150px; object-fit: cover; border: 1px solid var(--hud-cyan); box-shadow: 0 0 10px rgba(0,225,255,0.25); background: #001122; }
-  .holo-news-item { font-size: 12px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,225,255,0.15); }
-  .holo-news-date { font-size: 10px; opacity: 0.6; margin-left: 6px; }
+  .holo-body-text { font-size: 13px; line-height: 1.6; color: #dfffff; padding-right: 4px; }
+  .holo-image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 12px; }
+  .holo-img { width: 100%; height: 120px; object-fit: cover; border: 1px solid var(--hud-cyan); box-shadow: 0 0 10px rgba(0,225,255,0.25); background: #001122; border-radius: 2px;}
+  .holo-news-item { font-size: 12px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,225,255,0.15); line-height: 1.4; color: #dfffff; }
+  .holo-news-date { font-size: 10px; opacity: 0.6; margin-left: 6px; color: var(--hud-cyan); }
   .holo-bullet-list { display: grid; gap: 6px; margin-top: 8px; }
   .holo-bullet-list div { font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(0,225,255,0.12); }
-  .tab-link-grid { display: grid; gap: 8px; margin-top: 10px; }
+  
+  .tab-link-grid { display: grid; gap: 8px; margin-top: 10px; margin-bottom: 10px; }
   .tab-link {
     display: block;
     color: #dfffff;
@@ -332,16 +320,10 @@
     border: 1px solid rgba(0,225,255,0.24);
     padding: 8px 10px;
     background: rgba(0,225,255,0.05);
+    font-size: 12px;
+    transition: background 0.2s;
   }
-  .tab-link:hover { background: rgba(0,225,255,0.16); }
-  
-  /* --- UPGRADED DISMISS ANIMATION FOR OFF-SCREEN FLING --- */
-  .window-dismiss {
-    opacity: 0 !important;
-    transform: scale(0.6) translateY(30px) !important;
-    filter: blur(10px) brightness(2);
-    transition: all 220ms cubic-bezier(0.4, 0, 0.2, 1) !important;
-  }
+  .tab-link:hover { background: rgba(0,225,255,0.25); }
 
   /* Globe panel gets a taller, map-friendly layout */
   #globePanel { width: min(94vw, 1100px); }
@@ -369,8 +351,8 @@
 <div class="user-badge">
   <div class="dot"></div>
   <div>
-    <div class="title">JARVIS OS v1.1</div>
-    <div class="subtitle">PERSONAL AI SYSTEM</div>
+    <div class="title">JARVIS OS v1.2</div>
+    <div class="subtitle">ENGINEERING AI SYSTEM</div>
   </div>
 </div>
 
@@ -393,7 +375,7 @@
   </div>
   <div class="hud-card">
     <div class="card-title">// VOICE ENGINE</div>
-    <div>MODEL: LLAMA 3.2</div>
+    <div>MODEL: LLAMA 3.2 VISION</div>
     <div>TTS: FISH AUDIO</div>
   </div>
 </div>
@@ -415,27 +397,6 @@
 <div class="ticker"><div class="ticker-inner" id="tickerText">INITIALIZING...</div></div>
 
 <div class="holo-workspace" id="holoWorkspace"></div>
-
-<div class="holo-dock">
-  <button class="holo-chip" data-window-type="info">INFORMATION</button>
-  <button class="holo-chip" data-window-type="data">DATA</button>
-  <button class="holo-chip" data-window-type="web">WEBSITE</button>
-</div>
-
-<!-- ============ HOLOGRAPHIC PANELS ============ -->
-
-<!-- Research / factual info panel -->
-<div class="holo-panel" id="researchPanel">
-  <div class="holo-panel-header">
-    <div class="holo-panel-title" id="researchTitle">TOPIC</div>
-    <div class="holo-panel-close" data-close-panel="researchPanel">CLOSE ✕</div>
-  </div>
-  <div id="researchImages" class="holo-image-grid"></div>
-  <div class="holo-section-label">// BACKGROUND</div>
-  <div class="holo-body-text" id="researchBackground">—</div>
-  <div class="holo-section-label" id="researchRecentLabel" style="display:none;">// RECENT DEVELOPMENTS</div>
-  <div id="researchRecent"></div>
-</div>
 
 <!-- Globe / location panel -->
 <div class="holo-panel" id="globePanel">
@@ -463,12 +424,15 @@
 </div>
 
 <template id="floatingPanelTemplate">
-  <div class="holo-panel floating visible">
+  <div class="holo-panel floating visible" style="overflow-y: auto;">
     <div class="holo-panel-header">
       <div class="holo-panel-title">SYSTEM WINDOW</div>
-      <div class="holo-panel-close">CLOSE ✕</div>
+      <div class="holo-panel-actions">
+        <button class="holo-pin-btn" title="Pin Window">PIN 📌</button>
+        <div class="holo-panel-close">✕</div>
+      </div>
     </div>
-    <div class="holo-body-text">—</div>
+    <div class="holo-body-text" style="padding-bottom: 15px;">—</div>
   </div>
 </template>
 
