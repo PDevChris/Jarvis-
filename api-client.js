@@ -1,6 +1,10 @@
 // Centralized JARVIS API client — retry, health-check, and connection-state management.
 (function () {
-  const BASE = "http://localhost:8000";
+  // Environment-aware BASE URL (Supports Local PC and GitHub Codespaces)
+  const BASE = window.location.protocol === "file:" 
+    ? "http://localhost:8000" 
+    : window.location.origin;
+    
   let _connected = false;
   let _healthTimer = null;
   const _connectCbs = [];
@@ -109,6 +113,6 @@
         jarvisTimeout: 10000,
       });
       return res.json();
-    },
+    }
   };
 })();
