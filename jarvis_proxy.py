@@ -25,7 +25,7 @@ try:
 except ImportError:
     from duckduckgo_search import DDGS  # legacy name fallback
 
-# --- STOCK MARKET (NEW) ---
+# --- STOCK MARKET ---
 try:
     import yfinance as yf
     YFINANCE_AVAILABLE = True
@@ -50,7 +50,7 @@ DEFAULT_VISION_MODEL = "llama3.2-vision"
 
 LOCATION_HINTS = [
     "where is", "where are", "take me to", "locate", "map of", "fly to",
-    "show me on the map", "show me the city", "show me the country", "where am i", "near me", "around me",
+    "show me on the map", "show me the city", "show me the country", "where am i", "near me", "around me"
 ]
 
 # ==========================================
@@ -97,7 +97,7 @@ def launch_local_application(app_name):
         "chrome": "chrome", "vs code": "code", "vscode": "code",
         "solidworks": "SLDWORKS", "matlab": "matlab", "discord": "discord",
         "file explorer": "explorer", "explorer": "explorer", "notepad": "notepad",
-        "calculator": "calc", "terminal": "wt", "fusion 360": "fusion360"
+        "calculator": "calc", "terminal": "wt", "fusion 360": "fusion360", "autocad": "acad"
     }
     target = app_map.get(app_name.lower(), app_name)
     try:
@@ -111,31 +111,52 @@ def launch_local_application(app_name):
         return False
 
 # ==========================================
-# INTENT DETECTORS
+# INTELLIGENT ROUTER
 # ==========================================
-def is_conversational_prompt(prompt):
+def determine_intent(prompt):
+    """Categorizes the user's intent to determine response behavior and UI actions."""
     lower = prompt.lower().strip()
-    research_triggers = ["what is", "who is", "tell me about", "latest", "news about", "explain"]
-    if any(trigger in lower for trigger in research_triggers): return False
-        
-    chat_triggers = [
-        "hey jarvis", "hi jarvis", "hello", "morning", "evening", 
-        "trouble", "help me", "cad", "model", "design", "build", 
-        "code", "script", "error", "idea", "brainstorm", "partner",
-        "how are you", "thanks", "thank you", "yes", "no", "good"
-    ]
-    if any(trigger in lower for trigger in chat_triggers) or len(lower.split()) <= 4: return True
-    return False
+    words = lower.split()
+    word_count = len(words)
 
-def is_market_prompt(prompt):
-    lower = prompt.lower().strip()
-    triggers = ["stock", "price", "shares", "market", "invest", "ticker", "finance", "earnings"]
-    return any(trigger in lower for trigger in triggers)
+    # 1. App Control
+    if extract_app_command(prompt): 
+        return "APP_CONTROL"
+        
+    # 2. Screen Reading
+    if is_screen_prompt(prompt): 
+        return "SCREEN_READ"
+        
+    # 3. Location & Maps
+    if any(hint in lower for hint in LOCATION_HINTS): 
+        return "LOCATION"
+        
+    # 4. Stock Market Analysis
+    market_triggers = ["stock", "price", "shares", "market", "invest", "ticker", "finance", "earnings"]
+    if any(trigger in lower for trigger in market_triggers): 
+        return "MARKET_RESEARCH"
+
+    # 5. Short, Casual Conversation (Strictly prevents tabs and limits output)
+    short_chat_triggers = ["hi", "hello", "hey", "thanks", "thank you", "morning", "evening", "bye", "goodbye", "how are you", "whats up", "what's up", "good", "nice", "cool", "awesome"]
+    if lower in short_chat_triggers or (word_count <= 4 and any(w in lower for w in short_chat_triggers)):
+        return "SHORT_CHAT"
+
+    # 6. Engineering & Deep Thought (No tabs, but highly detailed answers)
+    engineering_triggers = ["cad", "model", "design", "build", "code", "script", "error", "idea", "brainstorm", "tolerance", "mechanics", "robot", "python", "solidworks", "help me"]
+    if any(trigger in lower for trigger in engineering_triggers):
+        return "ENGINEERING"
+
+    # 7. Heavy Research (Creates Tabs)
+    research_triggers = ["what is", "who is", "tell me about", "latest", "news", "search", "explain how"]
+    if any(trigger in lower for trigger in research_triggers):
+        return "RESEARCH"
+
+    # Default to general conversation
+    return "CONVERSATION"
 
 def extract_possible_ticker(prompt):
-    # Looks for a capitalized ticker symbol (e.g., TSLA, AAPL)
     words = re.findall(r'\b[A-Z]{1,5}\b', prompt)
-    ignore = {"WHAT", "HOW", "WHY", "IS", "THE", "IN", "ON", "AT", "TO", "FOR", "JARVIS", "STOCK", "PRICE"}
+    ignore = {"WHAT", "HOW", "WHY", "IS", "THE", "IN", "ON", "AT", "TO", "FOR", "JARVIS", "STOCK", "PRICE", "BUY", "SELL"}
     for w in words:
         if w not in ignore: return w
     return None
@@ -167,14 +188,6 @@ def extract_location_query(prompt):
             if candidate and candidate.lower() not in {"information about", "a picture", "the weather", "the news"}:
                 return re.sub(r"\s+", " ", re.sub(r"\b(on the map|the map|the city|the country)\b", "", candidate, flags=re.IGNORECASE)).strip(" -")
     return re.sub(r"[^\w\s-]", "", re.sub(r"\b(on the map|the map)\b", "", prompt, flags=re.IGNORECASE)).strip()
-
-def is_location_prompt(prompt):
-    return any(hint in prompt.lower().strip() for hint in LOCATION_HINTS)
-
-def should_probe_show_me_location(prompt):
-    lower = prompt.lower().strip()
-    if not lower.startswith("show me "): return False
-    return not any(re.search(rf"\b{token}\b", lower) for token in ["image", "picture", "article", "website", "news", "video", "how", "why"])
 
 def summarize_location(display_name, query, wiki_text, nearby, weather):
     if wiki_text: return wiki_text
@@ -289,31 +302,22 @@ def assistant():
 
     if not user_prompt: return jsonify({"status": "error", "message": "Empty prompt."}), 400
 
-    lower_prompt = user_prompt.lower()
     save_memory_entry("user", user_prompt)
-    is_page_request = "webpage" in lower_prompt or "page" in lower_prompt or bool(page_context)
+    is_page_request = "webpage" in user_prompt.lower() or "page" in user_prompt.lower() or bool(page_context)
 
-    # ---- INTENT ROUTER ----
-    category = "RESEARCH"
-    app_to_launch = extract_app_command(user_prompt)
-    
-    if app_to_launch: category = "APP_CONTROL"
-    elif is_screen_prompt(user_prompt): category = "SCREEN_READ"
-    elif is_location_prompt(user_prompt): category = "LOCATION"
-    elif is_market_prompt(user_prompt): category = "MARKET_RESEARCH"
-    elif is_conversational_prompt(user_prompt): category = "CONVERSATION"
+    # 1. ROUTE INTENT
+    category = determine_intent(user_prompt)
 
     research_bundle = {"summary": "", "news": "", "images": [], "links": [], "location": None, "page": None}
     encoded_screen = None
 
-    # ---- EXECUTE INTENT ACTIONS ----
+    # 2. EXECUTE ACTION
     if category == "APP_CONTROL":
+        app_to_launch = extract_app_command(user_prompt)
         launch_local_application(app_to_launch)
-        research_bundle["summary"] = f"Action: Executing launch protocols for {app_to_launch}."
         
     elif category == "SCREEN_READ":
         encoded_screen = capture_screen_base64()
-        research_bundle["summary"] = "Processing visual telemetry." if encoded_screen else "Screen capture failed (Codespaces environment detected)."
             
     elif category == "LOCATION":
         location_query = extract_location_query(user_prompt)
@@ -325,7 +329,6 @@ def assistant():
     elif category == "MARKET_RESEARCH":
         ticker_sym = extract_possible_ticker(user_prompt)
         text_data, news_data, image_urls = "", "", []
-        
         if ticker_sym and YFINANCE_AVAILABLE:
             try:
                 tkr = yf.Ticker(ticker_sym)
@@ -333,80 +336,90 @@ def assistant():
                 price = info.get("currentPrice", info.get("regularMarketPrice", "Unknown"))
                 name = info.get("shortName", ticker_sym)
                 summary = info.get("longBusinessSummary", "")[:600]
-                text_data = f"Financial Data for {name} ({ticker_sym}):\nCurrent Price: ${price}\nSummary: {summary}..."
-                
+                text_data = f"Financial Data for {name} ({ticker_sym}): Current Price: ${price}. Summary: {summary}..."
                 news_items = tkr.news
                 if news_items: news_data = "\n".join([f"- {n.get('title')}" for n in news_items[:4]])
             except Exception: pass
                 
         if not text_data:
-            search_query = user_prompt.replace("Jarvis", "").replace("JARVIS", "").strip() + " stock market financial news"
+            search_query = user_prompt.replace("Jarvis", "").strip() + " stock market financial news"
             text_data, news_data, image_urls = fetch_live_data_and_images(search_query)
             
         research_bundle["summary"] = text_data or "Gathering financial telemetry..."
         research_bundle["news"] = news_data
         research_bundle["images"] = image_urls[:6]
-        research_bundle["links"] = [{"label": "View Market Data", "url": f"https://finance.yahoo.com/quote/{ticker_sym or user_prompt.split()[-1]}"}]
+        research_bundle["links"] = [{"label": "View Market Data", "url": f"https://finance.yahoo.com/quote/{ticker_sym}"}] if ticker_sym else []
 
     elif category == "RESEARCH":
-        research_query = user_prompt.replace("Jarvis", "").replace("JARVIS", "").strip()
+        research_query = user_prompt.replace("Jarvis", "").strip()
         text_data, news_data, image_urls = fetch_live_data_and_images(research_query)
         research_bundle["summary"] = text_data or "I am pulling the requested data streams now, sir."
         research_bundle["images"] = image_urls[:6]
-        
-    elif category == "CONVERSATION":
-        research_bundle["summary"] = "Internal processing complete."
 
-    # ---- DYNAMIC PERSONA & TOKEN LIMIT ----
+    if is_page_request and page_context:
+        research_bundle["page"] = {
+            "title": page_context.get("title") or "Current webpage",
+            "excerpt": page_context.get("selection") or page_context.get("body_text", "")[:1500]
+        }
+
+    # 3. BUILD PERSONA & TOKEN LIMITS
     recent_mem = load_memory(8)
     mem_str = " | ".join([f"{m['role']}: {m['text']}" for m in recent_mem])
+    
     context_parts = []
-    if research_bundle.get("summary") and category not in ["CONVERSATION", "SCREEN_READ", "APP_CONTROL"]:
+    if research_bundle.get("summary") and category not in ["SHORT_CHAT", "CONVERSATION", "ENGINEERING"]:
         context_parts.append(research_bundle["summary"])
 
-    # If JARVIS is teaching or researching, we remove the "under 40 words" rule and increase the token limit.
-    if category in ["RESEARCH", "MARKET_RESEARCH", "SCREEN_READ"]:
-        max_tokens = 350
-        system_instruction = (
-            "You are JARVIS, an intelligent engineering companion and technical partner. "
-            "Speak naturally and with grounded expertise. Address the user as sir. "
-            "Act as a technical analyst and teacher. Provide a clear, detailed, and insightful explanation. "
-            "Do not restrict yourself to short answers; provide enough detail to fully answer the question."
-        )
-    else:
-        max_tokens = 100
-        system_instruction = (
-            "You are JARVIS, an intelligent engineering companion and technical partner. "
-            "Speak naturally, concisely, and with grounded expertise. Address the user as sir. "
-            "Keep replies highly direct and under 40 words."
-        )
+    # DYNAMIC PROMPTING BASED ON CATEGORY
+    if category == "SHORT_CHAT":
+        max_tokens = 30
+        system_instruction = "You are JARVIS. The user is engaging in casual chat or greeting you. Respond naturally, politely, and strictly in 1 or 2 very short sentences."
+        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nKeep it brief."
+        fallback_reply = "Hello, sir."
+        
+    elif category == "ENGINEERING":
+        max_tokens = 400
+        system_instruction = "You are JARVIS, an expert engineering AI. Collaborate thoughtfully on design, code, physics, and problem-solving. Be highly detailed."
+        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nProvide detailed analysis."
+        fallback_reply = "I am ready to assist with the engineering analysis, sir."
 
-    if category == "LOCATION":
-        target = ((research_bundle.get("location") or {}).get("title") or "target location")
-        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nContext: {' '.join(context_parts)}\nRespond as if you have researched the location."
-        fallback_reply = f"Location acquired, sir. Bringing the globe online for {target}."
-    elif category == "APP_CONTROL":
-        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nRespond by concisely confirming you are launching the application."
-        fallback_reply = f"Right away, sir. Launching {app_to_launch}."
-    elif category == "SCREEN_READ":
-        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nLook at the provided image of the user's screen. Explain what is visible."
-        fallback_reply = "Processing visual telemetry now, sir."
     elif category in ["RESEARCH", "MARKET_RESEARCH"]:
-        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nContext: {' '.join(context_parts)}\nYou are an engineering partner. Analyze this context and explain it thoroughly in your own words."
-        fallback_reply = "Research complete, sir. Presenting the relevant intelligence now."
-    else:
-        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nRespond directly, conversationally, and concisely."
-        fallback_reply = "I am here and ready to assist, sir."
+        max_tokens = 350
+        system_instruction = "You are JARVIS, an analytical AI. Synthesize the provided data naturally. Explain the context, positive/negative outlooks, and summarize it beautifully for the user."
+        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nContext: {' '.join(context_parts)}\nExplain this data thoroughly."
+        fallback_reply = "Research complete, sir. Presenting the intelligence now."
+        
+    elif category == "SCREEN_READ":
+        max_tokens = 250
+        system_instruction = "You are JARVIS. Look at the image of the user's screen. Act as a collaborative partner and explain what is visible, especially focusing on engineering or code."
+        prompt_for_ollama = f"{system_instruction}\nUser request: {user_prompt}\nAnalyze the screen."
+        fallback_reply = "Processing visual telemetry now, sir."
+
+    elif category == "APP_CONTROL":
+        max_tokens = 30
+        system_instruction = "You are JARVIS. Confirm that you are opening the requested application in exactly one sentence."
+        prompt_for_ollama = f"{system_instruction}\nUser request: {user_prompt}"
+        fallback_reply = "Right away, sir."
+        
+    else: # CONVERSATION
+        max_tokens = 80
+        system_instruction = "You are JARVIS. Speak naturally and concisely. Address the user as sir. Keep replies under 3 sentences."
+        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}"
+        fallback_reply = "I am here, sir."
 
     images_list = [encoded_screen] if encoded_screen else None
     reply = fetch_assistant_reply(system_instruction, prompt_for_ollama, fallback_reply, images=images_list, max_tokens=max_tokens)
     save_memory_entry("jarvis", reply)
 
+    # Completely wipe the research bundle for chat/apps so the UI doesn't open tabs
+    if category in ["SHORT_CHAT", "CONVERSATION", "ENGINEERING", "APP_CONTROL"]:
+        research_bundle = {}
+
     return jsonify({
         "status": "success",
         "category": category,
         "response": reply,
-        "research": research_bundle if category not in ["CONVERSATION", "APP_CONTROL"] else {},
+        "research": research_bundle
     })
 
 def location_info_internal(query="", latitude=None, longitude=None):
