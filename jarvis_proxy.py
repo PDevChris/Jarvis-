@@ -11,6 +11,7 @@ import psutil
 from flask import Flask, request, Response, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 
+# --- VISION CAPTURE ---
 try:
     from PIL import ImageGrab
     SCREEN_CAPTURE_AVAILABLE = True
@@ -18,10 +19,19 @@ except ImportError:
     SCREEN_CAPTURE_AVAILABLE = False
     print("[WARNING] Pillow library not found. Screen reading disabled. Run 'pip install Pillow'")
 
+# --- WEB SEARCH ---
 try:
     from ddgs import DDGS
 except ImportError:
     from duckduckgo_search import DDGS  # legacy name fallback
+
+# --- STOCK MARKET (NEW) ---
+try:
+    import yfinance as yf
+    YFINANCE_AVAILABLE = True
+except ImportError:
+    YFINANCE_AVAILABLE = False
+    print("[WARNING] yfinance not found. Market research limited. Run 'pip install yfinance'")
 
 app = Flask(__name__)
 CORS(app)
@@ -33,7 +43,6 @@ FISH_API_KEY = ""
 FISH_VOICE_ID = ""
 
 MEMORY_PATH = "jarvis_memory.jsonl"
-# Fixed port to standard 11434 to prevent wrong port popups
 DEFAULT_OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
 
 DEFAULT_TEXT_MODEL = "llama3.2"
@@ -48,7 +57,6 @@ LOCATION_HINTS = [
 # SCREEN UNDERSTANDING MODULE
 # ==========================================
 def capture_screen_base64():
-    """Captures the current desktop screen and encodes it for the Vision LLM."""
     if not SCREEN_CAPTURE_AVAILABLE:
         return None
     try:
@@ -56,7 +64,6 @@ def capture_screen_base64():
         if screenshot.mode in ("RGBA", "P"):
             screenshot = screenshot.convert("RGB")
         screenshot.thumbnail((1920, 1080))
-        
         buffered = io.BytesIO()
         screenshot.save(buffered, format="JPEG", quality=80)
         return base64.b64encode(buffered.getvalue()).decode("utf-8")
@@ -86,48 +93,30 @@ def extract_app_command(prompt):
     return None
 
 def launch_local_application(app_name):
-    """Launches common applications safely across OS environments."""
     app_map = {
-        "chrome": "chrome",
-        "google chrome": "chrome",
-        "vs code": "code",
-        "vscode": "code",
-        "solidworks": "SLDWORKS",
-        "matlab": "matlab",
-        "discord": "discord",
-        "file explorer": "explorer",
-        "explorer": "explorer",
-        "notepad": "notepad",
-        "calculator": "calc",
-        "command prompt": "cmd",
-        "terminal": "wt",
-        "fusion 360": "fusion360",
-        "autocad": "acad"
+        "chrome": "chrome", "vs code": "code", "vscode": "code",
+        "solidworks": "SLDWORKS", "matlab": "matlab", "discord": "discord",
+        "file explorer": "explorer", "explorer": "explorer", "notepad": "notepad",
+        "calculator": "calc", "terminal": "wt", "fusion 360": "fusion360"
     }
-    
     target = app_map.get(app_name.lower(), app_name)
     try:
         sys_name = platform.system()
-        if sys_name == "Windows":
-            os.system(f"start {target}")
-        elif sys_name == "Darwin": # macOS
-            os.system(f"open -a {target}")
-        else: # Linux / GitHub Codespaces
-            os.system(f"xdg-open {target} &")
+        if sys_name == "Windows": os.system(f"start {target}")
+        elif sys_name == "Darwin": os.system(f"open -a {target}")
+        else: os.system(f"xdg-open {target} &")
         return True
     except Exception as e:
         print(f"[App Launch Error]: {e}")
         return False
 
 # ==========================================
-# CONVERSATIONAL DETECTOR
+# INTENT DETECTORS
 # ==========================================
 def is_conversational_prompt(prompt):
     lower = prompt.lower().strip()
-    
-    research_triggers = ["what is", "who is", "tell me about", "latest", "news about", "search", "explain how"]
-    if any(trigger in lower for trigger in research_triggers):
-        return False
+    research_triggers = ["what is", "who is", "tell me about", "latest", "news about", "explain"]
+    if any(trigger in lower for trigger in research_triggers): return False
         
     chat_triggers = [
         "hey jarvis", "hi jarvis", "hello", "morning", "evening", 
@@ -135,61 +124,57 @@ def is_conversational_prompt(prompt):
         "code", "script", "error", "idea", "brainstorm", "partner",
         "how are you", "thanks", "thank you", "yes", "no", "good"
     ]
-    
-    if any(trigger in lower for trigger in chat_triggers) or len(lower.split()) <= 4:
-        return True
+    if any(trigger in lower for trigger in chat_triggers) or len(lower.split()) <= 4: return True
     return False
 
+def is_market_prompt(prompt):
+    lower = prompt.lower().strip()
+    triggers = ["stock", "price", "shares", "market", "invest", "ticker", "finance", "earnings"]
+    return any(trigger in lower for trigger in triggers)
+
+def extract_possible_ticker(prompt):
+    # Looks for a capitalized ticker symbol (e.g., TSLA, AAPL)
+    words = re.findall(r'\b[A-Z]{1,5}\b', prompt)
+    ignore = {"WHAT", "HOW", "WHY", "IS", "THE", "IN", "ON", "AT", "TO", "FOR", "JARVIS", "STOCK", "PRICE"}
+    for w in words:
+        if w not in ignore: return w
+    return None
+
 # ==========================================
-# PERSISTENT MEMORY ENGINE
+# MEMORY & LOCATION HELPERS
 # ==========================================
 def load_memory(limit=10):
-    if not os.path.exists(MEMORY_PATH):
-        return []
+    if not os.path.exists(MEMORY_PATH): return []
     try:
         with open(MEMORY_PATH, "r", encoding="utf-8") as f:
-            lines = [json.loads(line) for line in f if line.strip()]
-        return lines[-limit:]
-    except Exception:
-        return []
+            return [json.loads(line) for line in f if line.strip()][-limit:]
+    except Exception: return []
 
 def save_memory_entry(role, text):
-    entry = {"role": role, "text": text, "timestamp": datetime.now().isoformat()}
     try:
         with open(MEMORY_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry) + "\n")
-    except Exception:
-        pass
+            f.write(json.dumps({"role": role, "text": text, "timestamp": datetime.now().isoformat()}) + "\n")
+    except Exception: pass
 
 def extract_location_query(prompt):
     lower = prompt.lower().strip()
-    if any(token in lower for token in ["where am i", "my location", "around me", "near me", "what is nearby"]):
-        return ""
-    patterns = [
-        "where is ", "locate ", "find ", "show me the location of ", "take me to ", "map of ",
-        "show me on the map ", "show me the city ", "show me the country ", "where are ", "show me ",
-    ]
+    if any(token in lower for token in ["where am i", "my location", "near me"]): return ""
+    patterns = ["where is ", "locate ", "find ", "take me to ", "map of ", "show me the city ", "where are ", "show me "]
     for pattern in patterns:
         if pattern in lower:
             start = lower.find(pattern) + len(pattern)
             candidate = re.sub(r"[^\w\s-]", "", prompt[start:]).strip()
             if candidate and candidate.lower() not in {"information about", "a picture", "the weather", "the news"}:
-                candidate = re.sub(r"\b(on the map|the map|the city|the country)\b", "", candidate, flags=re.IGNORECASE)
-                return re.sub(r"\s+", " ", candidate).strip(" -")
-    cleaned = re.sub(r"\b(on the map|the map|the city|the country)\b", "", prompt, flags=re.IGNORECASE)
-    return re.sub(r"[^\w\s-]", "", cleaned).strip()
+                return re.sub(r"\s+", " ", re.sub(r"\b(on the map|the map|the city|the country)\b", "", candidate, flags=re.IGNORECASE)).strip(" -")
+    return re.sub(r"[^\w\s-]", "", re.sub(r"\b(on the map|the map)\b", "", prompt, flags=re.IGNORECASE)).strip()
 
 def is_location_prompt(prompt):
-    lower = prompt.lower().strip()
-    return any(hint in lower for hint in LOCATION_HINTS)
+    return any(hint in prompt.lower().strip() for hint in LOCATION_HINTS)
 
 def should_probe_show_me_location(prompt):
     lower = prompt.lower().strip()
     if not lower.startswith("show me "): return False
-    return not any(re.search(rf"\b{token}\b", lower) for token in [
-        "image", "images", "picture", "pictures", "photo", "photos", "article", "articles",
-        "website", "webpage", "page", "about", "news", "video", "videos", "how", "why",
-    ])
+    return not any(re.search(rf"\b{token}\b", lower) for token in ["image", "picture", "article", "website", "news", "video", "how", "why"])
 
 def summarize_location(display_name, query, wiki_text, nearby, weather):
     if wiki_text: return wiki_text
@@ -198,33 +183,26 @@ def summarize_location(display_name, query, wiki_text, nearby, weather):
     weather_summary = f" Current weather is {weather['condition']} at {weather['temperature']} degrees Fahrenheit." if weather.get("condition") else ""
     return f"{primary} location lock acquired.{weather_summary}{nearby_summary}".strip()
 
-def fetch_assistant_reply(system_instruction, prompt_for_ollama, fallback_reply, images=None):
-    model_to_use = DEFAULT_VISION_MODEL if images else DEFAULT_TEXT_MODEL
+def fetch_assistant_reply(system_instruction, prompt_for_ollama, fallback_reply, images=None, max_tokens=120):
     payload = {
-        "model": model_to_use,
+        "model": DEFAULT_VISION_MODEL if images else DEFAULT_TEXT_MODEL,
         "system": system_instruction,
         "prompt": prompt_for_ollama,
         "stream": False,
-        "options": {"num_predict": 120}
+        "options": {"num_predict": max_tokens}
     }
-    if images:
-        payload["images"] = images
+    if images: payload["images"] = images
 
     try:
-        ollama_response = requests.post(os.getenv("OLLAMA_URL", DEFAULT_OLLAMA_URL), json=payload, timeout=25)
+        ollama_response = requests.post(os.getenv("OLLAMA_URL", DEFAULT_OLLAMA_URL), json=payload, timeout=30)
         bot_reply = ollama_response.json().get("response", fallback_reply)
         return " ".join(re.sub(r"\(.*?\)|\[.*?\]", "", bot_reply).strip().split()) or fallback_reply
     except Exception as exc:
         print(f"[Backend Error - Ollama]: {exc}")
         return fallback_reply
 
-def compact_warning_message(exc):
-    message = str(exc).strip().splitlines()[0] if str(exc).strip() else exc.__class__.__name__
-    if "403" in message or "rate" in message.lower(): return "rate limited"
-    return message
-
 # ==========================================
-# MULTI-PROVIDER SEARCH & IMAGE FALLBACK
+# WEB & DATA FETCHING
 # ==========================================
 def fetch_live_data_and_images(query):
     text_context, news_context, image_urls = "", "", []
@@ -235,19 +213,18 @@ def fetch_live_data_and_images(query):
                 try:
                     results = list(ddgs.text(query, max_results=3))
                     if results: text_context = "\n".join([f"{r.get('title','')}: {r.get('body','')}" for r in results])
-                except Exception as exc: print(f"[DDGS Text Notice]: {compact_warning_message(exc)}")
+                except Exception: pass
 
                 try:
                     news_results = list(ddgs.news(query, max_results=3))
                     if news_results: news_context = "\n".join([f"Date: {r.get('date', '')} | News: {r.get('title','')}" for r in news_results])
-                except Exception as exc: print(f"[DDGS News Notice]: {compact_warning_message(exc)}")
+                except Exception: pass
 
                 try:
                     img_results = list(ddgs.images(query, max_results=6))
-                    if img_results:
-                        image_urls = [img.get('thumbnail') or img.get('image') for img in img_results if (img.get('thumbnail') or img.get('image'))]
-                except Exception as exc: print(f"[DDGS Images Notice]: {compact_warning_message(exc)}")
-    except Exception as exc: print(f"[DDGS Notice]: {compact_warning_message(exc)}")
+                    if img_results: image_urls = [img.get('image') for img in img_results if img.get('image')]
+                except Exception: pass
+    except Exception: pass
 
     if not image_urls:
         try:
@@ -267,26 +244,19 @@ def proxy_image():
     try:
         r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, stream=True, timeout=5)
         return send_file(io.BytesIO(r.content), mimetype=r.headers.get("content-type", "image/jpeg"))
-    except Exception as e:
-        return str(e), 500
+    except Exception as e: return str(e), 500
 
 @app.route("/api/location-info", methods=["POST"])
 def location_info():
     data = request.get_json() or {}
-    query = (data.get("query") or "").strip()
-    latitude, longitude = data.get("latitude"), data.get("longitude")
-
-    if not query and (latitude is None or longitude is None):
-        return jsonify({"status": "error", "message": "No location data provided."})
+    query, latitude, longitude = data.get("query", "").strip(), data.get("latitude"), data.get("longitude")
+    if not query and (latitude is None or longitude is None): return jsonify({"status": "error", "message": "No location data provided."})
 
     try:
-        if latitude is not None and longitude is not None:
-            geocode_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={latitude}&lon={longitude}&addressdetails=1&accept-language=en"
-        else:
-            geocode_url = f"https://nominatim.openstreetmap.org/search?format=json&q={requests.utils.quote(query)}&addressdetails=1&limit=1&accept-language=en"
-        geocode_res = requests.get(geocode_url, timeout=6)
-        geocode_data = geocode_res.json()
-
+        if latitude is not None and longitude is not None: geocode_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={latitude}&lon={longitude}&addressdetails=1&accept-language=en"
+        else: geocode_url = f"https://nominatim.openstreetmap.org/search?format=json&q={requests.utils.quote(query)}&addressdetails=1&limit=1&accept-language=en"
+        
+        geocode_data = requests.get(geocode_url, timeout=6).json()
         place = geocode_data[0] if isinstance(geocode_data, list) and geocode_data else geocode_data if isinstance(geocode_data, dict) else None
         lat = float(place.get("lat", latitude)) if place and place.get("lat") else latitude
         lon = float(place.get("lon", longitude)) if place and place.get("lon") else longitude
@@ -297,25 +267,16 @@ def location_info():
             weather_res = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,weather_code&temperature_unit=fahrenheit", timeout=6)
             if weather_res.ok:
                 weather_payload = weather_res.json().get("current", {})
-                weather = {
-                    "temperature": weather_payload.get("temperature_2m"),
-                    "condition": "Clear" if weather_payload.get("weather_code") == 0 else "Cloudy/Rain"
-                }
+                weather = {"temperature": weather_payload.get("temperature_2m"), "condition": "Clear" if weather_payload.get("weather_code") == 0 else "Cloudy/Rain"}
 
         _, _, image_urls = fetch_live_data_and_images(query or display_name)
-        
         return jsonify({
-            "status": "success",
-            "title": display_name or query or "Location",
+            "status": "success", "title": display_name or query or "Location",
             "description": summarize_location(display_name, query, "", [], weather),
-            "coords": {"lat": lat, "lon": lon},
-            "weather": weather,
-            "images": image_urls[:6],
-            "nearby": [],
-            "links": [{"label": "Open in Maps", "url": f"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}#map=14/{lat}/{lon}"}],
+            "coords": {"lat": lat, "lon": lon}, "weather": weather, "images": image_urls[:6],
+            "nearby": [], "links": [{"label": "Open in Maps", "url": f"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}#map=14/{lat}/{lon}"}],
         })
-    except Exception as exc:
-        return jsonify({"status": "error", "message": str(exc)})
+    except Exception as exc: return jsonify({"status": "error", "message": str(exc)})
 
 # ==========================================
 # MAIN ASSISTANT LOGIC (THE BRAIN)
@@ -324,8 +285,7 @@ def location_info():
 def assistant():
     data = request.get_json() or {}
     user_prompt = (data.get("prompt") or "").strip()
-    page_context = data.get("page_context") or {}
-    location_context = data.get("location_context") or {}
+    page_context, location_context = data.get("page_context") or {}, data.get("location_context") or {}
 
     if not user_prompt: return jsonify({"status": "error", "message": "Empty prompt."}), 400
 
@@ -337,18 +297,11 @@ def assistant():
     category = "RESEARCH"
     app_to_launch = extract_app_command(user_prompt)
     
-    if app_to_launch:
-        category = "APP_CONTROL"
-    elif is_screen_prompt(user_prompt):
-        category = "SCREEN_READ"
-    elif is_location_prompt(user_prompt):
-        category = "LOCATION"
-    elif should_probe_show_me_location(user_prompt):
-        probe_query = extract_location_query(user_prompt)
-        probe_result = location_info_internal(query=probe_query) if probe_query else None
-        if probe_result and probe_result.get("coords", {}).get("lat") is not None: category = "LOCATION"
-    elif is_conversational_prompt(user_prompt):
-        category = "CONVERSATION"
+    if app_to_launch: category = "APP_CONTROL"
+    elif is_screen_prompt(user_prompt): category = "SCREEN_READ"
+    elif is_location_prompt(user_prompt): category = "LOCATION"
+    elif is_market_prompt(user_prompt): category = "MARKET_RESEARCH"
+    elif is_conversational_prompt(user_prompt): category = "CONVERSATION"
 
     research_bundle = {"summary": "", "news": "", "images": [], "links": [], "location": None, "page": None}
     encoded_screen = None
@@ -360,7 +313,7 @@ def assistant():
         
     elif category == "SCREEN_READ":
         encoded_screen = capture_screen_base64()
-        research_bundle["summary"] = "Processing visual telemetry from primary displays." if encoded_screen else "Screen capture failed."
+        research_bundle["summary"] = "Processing visual telemetry." if encoded_screen else "Screen capture failed (Codespaces environment detected)."
             
     elif category == "LOCATION":
         location_query = extract_location_query(user_prompt)
@@ -369,6 +322,32 @@ def assistant():
         research_bundle["summary"] = (location_result or {}).get("description", "")
         research_bundle["images"] = (location_result or {}).get("images", [])
         
+    elif category == "MARKET_RESEARCH":
+        ticker_sym = extract_possible_ticker(user_prompt)
+        text_data, news_data, image_urls = "", "", []
+        
+        if ticker_sym and YFINANCE_AVAILABLE:
+            try:
+                tkr = yf.Ticker(ticker_sym)
+                info = tkr.info
+                price = info.get("currentPrice", info.get("regularMarketPrice", "Unknown"))
+                name = info.get("shortName", ticker_sym)
+                summary = info.get("longBusinessSummary", "")[:600]
+                text_data = f"Financial Data for {name} ({ticker_sym}):\nCurrent Price: ${price}\nSummary: {summary}..."
+                
+                news_items = tkr.news
+                if news_items: news_data = "\n".join([f"- {n.get('title')}" for n in news_items[:4]])
+            except Exception: pass
+                
+        if not text_data:
+            search_query = user_prompt.replace("Jarvis", "").replace("JARVIS", "").strip() + " stock market financial news"
+            text_data, news_data, image_urls = fetch_live_data_and_images(search_query)
+            
+        research_bundle["summary"] = text_data or "Gathering financial telemetry..."
+        research_bundle["news"] = news_data
+        research_bundle["images"] = image_urls[:6]
+        research_bundle["links"] = [{"label": "View Market Data", "url": f"https://finance.yahoo.com/quote/{ticker_sym or user_prompt.split()[-1]}"}]
+
     elif category == "RESEARCH":
         research_query = user_prompt.replace("Jarvis", "").replace("JARVIS", "").strip()
         text_data, news_data, image_urls = fetch_live_data_and_images(research_query)
@@ -378,19 +357,29 @@ def assistant():
     elif category == "CONVERSATION":
         research_bundle["summary"] = "Internal processing complete."
 
-    # ---- BUILD PERSONA AND PROMPT ----
+    # ---- DYNAMIC PERSONA & TOKEN LIMIT ----
     recent_mem = load_memory(8)
     mem_str = " | ".join([f"{m['role']}: {m['text']}" for m in recent_mem])
-    
-    system_instruction = (
-        "You are JARVIS, an intelligent engineering companion and technical partner inspired by Iron Man's AI. "
-        "Speak naturally, concisely, and with grounded expertise. Address the user as sir. "
-        "Keep replies highly direct and under 40 words unless explaining a specific technical concept."
-    )
-
     context_parts = []
-    if research_bundle.get("summary") and category not in ["CONVERSATION", "SCREEN_READ"]:
+    if research_bundle.get("summary") and category not in ["CONVERSATION", "SCREEN_READ", "APP_CONTROL"]:
         context_parts.append(research_bundle["summary"])
+
+    # If JARVIS is teaching or researching, we remove the "under 40 words" rule and increase the token limit.
+    if category in ["RESEARCH", "MARKET_RESEARCH", "SCREEN_READ"]:
+        max_tokens = 350
+        system_instruction = (
+            "You are JARVIS, an intelligent engineering companion and technical partner. "
+            "Speak naturally and with grounded expertise. Address the user as sir. "
+            "Act as a technical analyst and teacher. Provide a clear, detailed, and insightful explanation. "
+            "Do not restrict yourself to short answers; provide enough detail to fully answer the question."
+        )
+    else:
+        max_tokens = 100
+        system_instruction = (
+            "You are JARVIS, an intelligent engineering companion and technical partner. "
+            "Speak naturally, concisely, and with grounded expertise. Address the user as sir. "
+            "Keep replies highly direct and under 40 words."
+        )
 
     if category == "LOCATION":
         target = ((research_bundle.get("location") or {}).get("title") or "target location")
@@ -402,15 +391,15 @@ def assistant():
     elif category == "SCREEN_READ":
         prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nLook at the provided image of the user's screen. Explain what is visible."
         fallback_reply = "Processing visual telemetry now, sir."
-    elif category == "RESEARCH":
-        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nContext: {' '.join(context_parts)}\nYou are an engineering partner. Explain this context in your own words conversationally."
+    elif category in ["RESEARCH", "MARKET_RESEARCH"]:
+        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nContext: {' '.join(context_parts)}\nYou are an engineering partner. Analyze this context and explain it thoroughly in your own words."
         fallback_reply = "Research complete, sir. Presenting the relevant intelligence now."
     else:
         prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nRespond directly, conversationally, and concisely."
         fallback_reply = "I am here and ready to assist, sir."
 
     images_list = [encoded_screen] if encoded_screen else None
-    reply = fetch_assistant_reply(system_instruction, prompt_for_ollama, fallback_reply, images=images_list)
+    reply = fetch_assistant_reply(system_instruction, prompt_for_ollama, fallback_reply, images=images_list, max_tokens=max_tokens)
     save_memory_entry("jarvis", reply)
 
     return jsonify({
