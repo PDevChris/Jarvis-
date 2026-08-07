@@ -31,7 +31,6 @@ try:
     YFINANCE_AVAILABLE = True
 except ImportError:
     YFINANCE_AVAILABLE = False
-    print("[WARNING] yfinance not found. Market research limited. Run 'pip install yfinance'")
 
 app = Flask(__name__)
 CORS(app)
@@ -57,28 +56,20 @@ LOCATION_HINTS = [
 # SCREEN UNDERSTANDING MODULE
 # ==========================================
 def capture_screen_base64():
-    if not SCREEN_CAPTURE_AVAILABLE:
-        return None
+    if not SCREEN_CAPTURE_AVAILABLE: return None
     try:
         screenshot = ImageGrab.grab(all_screens=True)
-        if screenshot.mode in ("RGBA", "P"):
-            screenshot = screenshot.convert("RGB")
+        if screenshot.mode in ("RGBA", "P"): screenshot = screenshot.convert("RGB")
         screenshot.thumbnail((1920, 1080))
         buffered = io.BytesIO()
         screenshot.save(buffered, format="JPEG", quality=80)
         return base64.b64encode(buffered.getvalue()).decode("utf-8")
     except Exception as e:
-        print(f"[Screen Capture Error]: {e}")
         return None
 
 def is_screen_prompt(prompt):
-    lower = prompt.lower().strip()
-    screen_triggers = [
-        "what am i looking at", "on my screen", "read my screen", 
-        "this cad model", "this drawing", "my screen", "look at this",
-        "what is this on my screen", "explain this code"
-    ]
-    return any(trigger in lower for trigger in screen_triggers)
+    screen_triggers = ["what am i looking at", "on my screen", "read my screen", "this cad model", "this drawing", "my screen", "look at this", "what is this on my screen", "explain this code"]
+    return any(trigger in prompt.lower().strip() for trigger in screen_triggers)
 
 # ==========================================
 # APPLICATION CONTROL MODULE
@@ -87,18 +78,11 @@ def extract_app_command(prompt):
     lower = prompt.lower().strip()
     if lower.startswith("open ") or lower.startswith("launch ") or lower.startswith("start "):
         parts = lower.split(" ", 1)
-        if len(parts) > 1:
-            app_name = parts[1].strip()
-            return re.sub(r"[^\w\s]", "", app_name)
+        if len(parts) > 1: return re.sub(r"[^\w\s]", "", parts[1].strip())
     return None
 
 def launch_local_application(app_name):
-    app_map = {
-        "chrome": "chrome", "vs code": "code", "vscode": "code",
-        "solidworks": "SLDWORKS", "matlab": "matlab", "discord": "discord",
-        "file explorer": "explorer", "explorer": "explorer", "notepad": "notepad",
-        "calculator": "calc", "terminal": "wt", "fusion 360": "fusion360", "autocad": "acad"
-    }
+    app_map = {"chrome": "chrome", "vs code": "code", "vscode": "code", "solidworks": "SLDWORKS", "matlab": "matlab", "discord": "discord", "file explorer": "explorer", "explorer": "explorer", "notepad": "notepad", "calculator": "calc", "terminal": "wt", "fusion 360": "fusion360", "autocad": "acad"}
     target = app_map.get(app_name.lower(), app_name)
     try:
         sys_name = platform.system()
@@ -106,52 +90,32 @@ def launch_local_application(app_name):
         elif sys_name == "Darwin": os.system(f"open -a {target}")
         else: os.system(f"xdg-open {target} &")
         return True
-    except Exception as e:
-        print(f"[App Launch Error]: {e}")
-        return False
+    except Exception: return False
 
 # ==========================================
 # INTELLIGENT ROUTER
 # ==========================================
 def determine_intent(prompt):
-    """Categorizes the user's intent to determine response behavior and UI actions."""
     lower = prompt.lower().strip()
-    words = lower.split()
-    word_count = len(words)
+    word_count = len(lower.split())
 
-    # 1. App Control
-    if extract_app_command(prompt): 
-        return "APP_CONTROL"
+    if extract_app_command(prompt): return "APP_CONTROL"
+    if is_screen_prompt(prompt): return "SCREEN_READ"
+    if any(hint in lower for hint in LOCATION_HINTS): return "LOCATION"
         
-    # 2. Screen Reading
-    if is_screen_prompt(prompt): 
-        return "SCREEN_READ"
-        
-    # 3. Location & Maps
-    if any(hint in lower for hint in LOCATION_HINTS): 
-        return "LOCATION"
-        
-    # 4. Stock Market Analysis
     market_triggers = ["stock", "price", "shares", "market", "invest", "ticker", "finance", "earnings"]
-    if any(trigger in lower for trigger in market_triggers): 
-        return "MARKET_RESEARCH"
+    if any(trigger in lower for trigger in market_triggers): return "MARKET_RESEARCH"
 
-    # 5. Short, Casual Conversation (Strictly prevents tabs and limits output)
     short_chat_triggers = ["hi", "hello", "hey", "thanks", "thank you", "morning", "evening", "bye", "goodbye", "how are you", "whats up", "what's up", "good", "nice", "cool", "awesome"]
     if lower in short_chat_triggers or (word_count <= 4 and any(w in lower for w in short_chat_triggers)):
         return "SHORT_CHAT"
 
-    # 6. Engineering & Deep Thought (No tabs, but highly detailed answers)
     engineering_triggers = ["cad", "model", "design", "build", "code", "script", "error", "idea", "brainstorm", "tolerance", "mechanics", "robot", "python", "solidworks", "help me"]
-    if any(trigger in lower for trigger in engineering_triggers):
-        return "ENGINEERING"
+    if any(trigger in lower for trigger in engineering_triggers): return "ENGINEERING"
 
-    # 7. Heavy Research (Creates Tabs)
     research_triggers = ["what is", "who is", "tell me about", "latest", "news", "search", "explain how"]
-    if any(trigger in lower for trigger in research_triggers):
-        return "RESEARCH"
+    if any(trigger in lower for trigger in research_triggers): return "RESEARCH"
 
-    # Default to general conversation
     return "CONVERSATION"
 
 def extract_possible_ticker(prompt):
@@ -162,7 +126,7 @@ def extract_possible_ticker(prompt):
     return None
 
 # ==========================================
-# MEMORY & LOCATION HELPERS
+# MEMORY ROUTES (FIXES THE 405 ERRORS)
 # ==========================================
 def load_memory(limit=10):
     if not os.path.exists(MEMORY_PATH): return []
@@ -177,6 +141,20 @@ def save_memory_entry(role, text):
             f.write(json.dumps({"role": role, "text": text, "timestamp": datetime.now().isoformat()}) + "\n")
     except Exception: pass
 
+@app.route("/memory/save", methods=["POST"])
+def memory_save_route():
+    data = request.get_json() or {}
+    save_memory_entry(data.get("role", "user"), data.get("text", ""))
+    return jsonify({"status": "ok"})
+
+@app.route("/memory/recent", methods=["GET"])
+def memory_recent_route():
+    limit = int(request.args.get("limit", "8"))
+    return jsonify({"entries": load_memory(limit)})
+
+# ==========================================
+# LOCATION HELPERS
+# ==========================================
 def extract_location_query(prompt):
     lower = prompt.lower().strip()
     if any(token in lower for token in ["where am i", "my location", "near me"]): return ""
@@ -205,14 +183,11 @@ def fetch_assistant_reply(system_instruction, prompt_for_ollama, fallback_reply,
         "options": {"num_predict": max_tokens}
     }
     if images: payload["images"] = images
-
     try:
         ollama_response = requests.post(os.getenv("OLLAMA_URL", DEFAULT_OLLAMA_URL), json=payload, timeout=30)
         bot_reply = ollama_response.json().get("response", fallback_reply)
         return " ".join(re.sub(r"\(.*?\)|\[.*?\]", "", bot_reply).strip().split()) or fallback_reply
-    except Exception as exc:
-        print(f"[Backend Error - Ollama]: {exc}")
-        return fallback_reply
+    except Exception: return fallback_reply
 
 # ==========================================
 # WEB & DATA FETCHING
@@ -229,7 +204,7 @@ def fetch_live_data_and_images(query):
                 except Exception: pass
 
                 try:
-                    news_results = list(ddgs.news(query, max_results=3))
+                    news_results = list(ddgs.news(query, max_results=4))
                     if news_results: news_context = "\n".join([f"Date: {r.get('date', '')} | News: {r.get('title','')}" for r in news_results])
                 except Exception: pass
 
@@ -302,16 +277,10 @@ def assistant():
 
     if not user_prompt: return jsonify({"status": "error", "message": "Empty prompt."}), 400
 
-    save_memory_entry("user", user_prompt)
-    is_page_request = "webpage" in user_prompt.lower() or "page" in user_prompt.lower() or bool(page_context)
-
-    # 1. ROUTE INTENT
     category = determine_intent(user_prompt)
-
     research_bundle = {"summary": "", "news": "", "images": [], "links": [], "location": None, "page": None}
     encoded_screen = None
 
-    # 2. EXECUTE ACTION
     if category == "APP_CONTROL":
         app_to_launch = extract_app_command(user_prompt)
         launch_local_application(app_to_launch)
@@ -342,7 +311,7 @@ def assistant():
             except Exception: pass
                 
         if not text_data:
-            search_query = user_prompt.replace("Jarvis", "").strip() + " stock market financial news"
+            search_query = user_prompt.replace("Jarvis", "").strip() + " stock market financial news 2026"
             text_data, news_data, image_urls = fetch_live_data_and_images(search_query)
             
         research_bundle["summary"] = text_data or "Gathering financial telemetry..."
@@ -351,18 +320,16 @@ def assistant():
         research_bundle["links"] = [{"label": "View Market Data", "url": f"https://finance.yahoo.com/quote/{ticker_sym}"}] if ticker_sym else []
 
     elif category == "RESEARCH":
-        research_query = user_prompt.replace("Jarvis", "").strip()
-        text_data, news_data, image_urls = fetch_live_data_and_images(research_query)
+        search_query = user_prompt.replace("Jarvis", "").strip() + " 2026 news updates"
+        text_data, news_data, image_urls = fetch_live_data_and_images(search_query)
         research_bundle["summary"] = text_data or "I am pulling the requested data streams now, sir."
+        research_bundle["news"] = news_data
         research_bundle["images"] = image_urls[:6]
 
-    if is_page_request and page_context:
-        research_bundle["page"] = {
-            "title": page_context.get("title") or "Current webpage",
-            "excerpt": page_context.get("selection") or page_context.get("body_text", "")[:1500]
-        }
+    if ("webpage" in user_prompt.lower() or "page" in user_prompt.lower()) and page_context:
+        research_bundle["page"] = {"title": page_context.get("title", "Current webpage"), "excerpt": page_context.get("selection") or page_context.get("body_text", "")[:1500]}
 
-    # 3. BUILD PERSONA & TOKEN LIMITS
+    # 3. BUILD PERSONA & 2026 TIME AWARENESS
     recent_mem = load_memory(8)
     mem_str = " | ".join([f"{m['role']}: {m['text']}" for m in recent_mem])
     
@@ -370,60 +337,47 @@ def assistant():
     if research_bundle.get("summary") and category not in ["SHORT_CHAT", "CONVERSATION", "ENGINEERING"]:
         context_parts.append(research_bundle["summary"])
 
-    # DYNAMIC PROMPTING BASED ON CATEGORY
+    # This dynamically injects today's date, but forces the year to 2026!
+    current_date = datetime.now().strftime(f"%A, %B %d, 2026")
+    base_persona = f"You are JARVIS. The current date is {current_date}. "
+
     if category == "SHORT_CHAT":
         max_tokens = 40
-        system_instruction = "You are JARVIS. The user is engaging in casual chat or greeting you. Respond naturally, politely, and strictly in 1 very short sentence."
-        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nKeep it brief."
+        prompt_for_ollama = f"{base_persona}The user is engaging in casual chat. Respond naturally, politely, and strictly in 1 very short sentence.\nMemory: {mem_str}\nUser request: {user_prompt}"
         fallback_reply = "Hello, sir."
         
     elif category == "ENGINEERING":
         max_tokens = 150
-        system_instruction = "You are JARVIS, an expert engineering AI. Collaborate thoughtfully but concisely. Do not lecture. Give a fast, practical response under 3 sentences."
-        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nProvide a concise analysis."
+        prompt_for_ollama = f"{base_persona}You are an expert engineering AI. Collaborate thoughtfully but concisely. Give a fast, practical response under 3 sentences.\nMemory: {mem_str}\nUser request: {user_prompt}"
         fallback_reply = "I am ready to assist with the engineering analysis, sir."
 
     elif category in ["RESEARCH", "MARKET_RESEARCH"]:
         max_tokens = 100
-        system_instruction = (
-            "You are JARVIS. Detailed research data has just been opened on the user's holographic display. "
-            "DO NOT read the details, numbers, or full text out loud. "
-            "Provide a fast, conversational 1-to-2 sentence verbal summary like a teammate."
-        )
-        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nContext: {' '.join(context_parts)}\nGive a very brief verbal summary."
+        prompt_for_ollama = f"{base_persona}Detailed research data is on the holographic display. DO NOT read the text out loud. Provide a fast, conversational 1-to-2 sentence verbal summary.\nMemory: {mem_str}\nUser request: {user_prompt}\nContext: {' '.join(context_parts)}"
         fallback_reply = "Research complete, sir. Presenting the intelligence on your display."
         
     elif category == "SCREEN_READ":
         max_tokens = 150
-        system_instruction = "You are JARVIS. Look at the image of the user's screen. Give a highly concise, 2-sentence explanation of what you see, focusing on engineering or code."
-        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nAnalyze the screen concisely."
+        prompt_for_ollama = f"{base_persona}Look at the image of the user's screen. Give a concise, 2-sentence explanation of what you see, focusing on engineering or code.\nMemory: {mem_str}\nUser request: {user_prompt}"
         fallback_reply = "Processing visual telemetry now, sir."
 
     elif category == "APP_CONTROL":
         max_tokens = 30
-        system_instruction = "You are JARVIS. Confirm that you are opening the requested application in exactly one sentence."
-        prompt_for_ollama = f"{system_instruction}\nUser request: {user_prompt}"
+        prompt_for_ollama = f"{base_persona}Confirm that you are opening the requested application in exactly one sentence.\nUser request: {user_prompt}"
         fallback_reply = "Right away, sir."
         
     else: # CONVERSATION
         max_tokens = 60
-        system_instruction = "You are JARVIS. Speak naturally and concisely. Address the user as sir. Keep replies strictly under 2 sentences."
-        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}"
+        prompt_for_ollama = f"{base_persona}Speak naturally and concisely. Address the user as sir. Keep replies strictly under 2 sentences.\nMemory: {mem_str}\nUser request: {user_prompt}"
         fallback_reply = "I am here, sir."
-    images_list = [encoded_screen] if encoded_screen else None
-    reply = fetch_assistant_reply(system_instruction, prompt_for_ollama, fallback_reply, images=images_list, max_tokens=max_tokens)
-    save_memory_entry("jarvis", reply)
 
-    # Completely wipe the research bundle for chat/apps so the UI doesn't open tabs
+    images_list = [encoded_screen] if encoded_screen else None
+    reply = fetch_assistant_reply("", prompt_for_ollama, fallback_reply, images=images_list, max_tokens=max_tokens)
+    
     if category in ["SHORT_CHAT", "CONVERSATION", "ENGINEERING", "APP_CONTROL"]:
         research_bundle = {}
 
-    return jsonify({
-        "status": "success",
-        "category": category,
-        "response": reply,
-        "research": research_bundle
-    })
+    return jsonify({"status": "success", "category": category, "response": reply, "research": research_bundle})
 
 def location_info_internal(query="", latitude=None, longitude=None):
     with app.test_request_context(json={"query": query, "latitude": latitude, "longitude": longitude}):
