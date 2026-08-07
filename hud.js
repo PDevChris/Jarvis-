@@ -54,7 +54,7 @@
   }
   function closeHoloPanel(id) { document.getElementById(id).classList.remove("visible"); }
 
-  // --- NEW WINDOW MANAGEMENT & PHYSICS ---
+  // --- WINDOW MANAGEMENT & PHYSICS ---
   let activeFloatingWindows = [];
 
   function dismissWindow(panel) {
@@ -100,7 +100,6 @@
     holoWorkspace.appendChild(fragment);
     const createdPanel = holoWorkspace.lastElementChild;
     
-    // Spawn roughly in the center with a slight random offset so they don't perfectly overlap
     const cascadeX = Math.max(20, window.innerWidth / 2 - 220 + (Math.random() * 80 - 40));
     const cascadeY = Math.max(80, window.innerHeight / 2 - 180 + (Math.random() * 60 - 30));
     
@@ -268,15 +267,12 @@
     const voices = speechSynthesis.getVoices();
     if (!voices || voices.length === 0) return null;
     
-    // Priority order for natural British accent in Chrome/Web Speech API
+    // Priority order: Daniel is king.
     jarvisVoice = voices.find(v => v.name.includes("Daniel"))
       || voices.find(v => v.name.includes("Google UK English Male"))
       || voices.find(v => v.lang === "en-GB" && v.name.toLowerCase().includes("male"))
       || voices.find(v => v.name.includes("George"))
       || voices.find(v => v.lang === "en-GB")
-      || voices.find(v => v.lang.startsWith("en-GB"))
-      || voices.find(v => v.name.toLowerCase().includes("british"))
-      || voices.find(v => v.lang.startsWith("en"))
       || voices[0];
     return jarvisVoice;
   }
@@ -296,8 +292,10 @@
     const utterance = new SpeechSynthesisUtterance(text);
     const v = loadVoice();
     if (v) utterance.voice = v;
-    utterance.pitch = 0.95;
-    utterance.rate = 1.0;
+    
+    // Adjusted pitch and rate for standard, crisp Daniel voice
+    utterance.pitch = 1.0;
+    utterance.rate = 1.05;
 
     utterance.onend = () => {
       currentState = "IDLE";
@@ -307,7 +305,6 @@
       startListening(); // Resume listening after speaking
     };
     utterance.onerror = (e) => {
-      console.warn("[TTS Error]", e);
       currentState = "IDLE";
       statusText.textContent = "SYSTEM READY";
       if (onComplete) onComplete();
@@ -332,6 +329,7 @@
     stopListening(); // Mute mic while speaking
 
     try {
+      // Try external API first. If it fails (like a 400 error), fail silently to the catch block.
       const blob = await apiClient.tts(text); 
       const url = URL.createObjectURL(blob);
       const audioEl = new Audio(url);
@@ -346,6 +344,7 @@
       audioEl.onerror = () => speakBrowserVoice(text, onComplete);
       audioEl.play();
     } catch (_) { 
+      // Silently fallback to Browser Voice (Daniel) on any error
       speakBrowserVoice(text, onComplete); 
     }
   }
@@ -371,9 +370,7 @@
     };
 
     recognition.onerror = (event) => {
-      if (event.error !== "no-speech" && event.error !== "aborted") {
-        console.warn("[Speech Recog Error]:", event.error);
-      }
+      // Ignore routine errors to keep console clean
     };
 
     recognition.onend = () => {
@@ -486,7 +483,7 @@
         layers: [{ id: 'osm-layer', type: 'raster', source: 'osm', minzoom: 0, maxzoom: 19 }]
       },
       center: [-90, 30], zoom: 0.5, pitch: 0, bearing: 0,
-      renderWorldCopies: false // Keeps it looking like a singular globe
+      renderWorldCopies: false 
     });
     
     globeMap.on('style.load', () => { 
