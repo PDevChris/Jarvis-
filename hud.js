@@ -14,7 +14,8 @@
     button.addEventListener("click", () => closeHoloPanel(button.dataset.closePanel));
   });
 
-  const isExtension = typeof chrome !== "undefined" && !!chrome.runtime?.id;
+  // HARD-DISABLED to prevent "vendor.js / tabs:outgoing" errors in Codespaces
+  const isExtension = false; 
   let floatingWindowIndex = 0;
   let activeMapMarker = null;
 
@@ -502,6 +503,8 @@
       cancelAnimationFrame(spinAnimation);
       spinAnimation = null;
     }
+    // EXTREMELY IMPORTANT: Stop the MapLibre easing immediately so flyTo works
+    if (globeMap) globeMap.stop();
   }
 
   async function tryLocationIntent(question) {
@@ -537,7 +540,7 @@
         
         if (coords.lat !== undefined && coords.lon !== undefined) {
           clearExistingMapMarker();
-          stopGlobeSpin(); // INSTANTLY stop the spin once target locked
+          stopGlobeSpin(); // Stop spin and stop MapLibre easing
           
           map.flyTo({ 
             center: [coords.lon, coords.lat], 
@@ -556,6 +559,14 @@
           markerEl.style.background = "#ff3300"; 
           markerEl.style.boxShadow = "0 0 18px #ff3300";
           activeMapMarker = new maplibregl.Marker({ element: markerEl }).setLngLat([coords.lon, coords.lat]).addTo(map);
+
+          // NEW: SPAWN LOCATION IMAGES ALONGSIDE THE GLOBE
+          if (data.images && data.images.length > 0) {
+            createFloatingWindow({
+              title: "LOCATION IMAGERY",
+              content: `<div class="holo-section-label">// VISUAL DATA</div>${renderImageGrid(data.images)}`
+            });
+          }
         }
       } else {
         document.getElementById("globeCoords").textContent = "TARGET UNREACHABLE";
@@ -568,19 +579,8 @@
     return true;
   }
 
-  // Silently handles chrome extension errors in Codespaces
   async function getPageContext() {
-    if (!isExtension) return null;
-    return new Promise((resolve) => { 
-      try {
-        chrome.runtime.sendMessage({ type: "JARVIS_PAGE_CONTEXT" }, (response) => { 
-          if (chrome.runtime.lastError) resolve(null);
-          else resolve(response?.pageContext || null); 
-        }); 
-      } catch (e) {
-        resolve(null);
-      }
-    }); 
+    return null; // Disabled for Codespaces to prevent vendor.js errors
   }
 
   function saveToMemory(role, text) { apiClient.saveMemory(role, text); }
@@ -591,7 +591,7 @@
     transcript.textContent = "You: " + question; statusText.textContent = "PROCESSING QUERY...";
     startProcessingChatter(); saveToMemory("user", question);
 
-    const pageContext = /\b(this webpage|this page|on screen|what am i looking at)\b/i.test(question) ? await getPageContext() : null;
+    const pageContext = null; 
 
     try {
       const locationContext = isCurrentLocationRequest(question) ? await getCurrentCoordinates() : null;
