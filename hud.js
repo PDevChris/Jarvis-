@@ -263,21 +263,11 @@
   // ============ TTS VOICE SELECTION (HIGH-QUALITY BRITISH FALLBACK) ============
   let jarvisVoice = null;
   function loadVoice() {
-    if (typeof speechSynthesis === "undefined") return null;
     const voices = speechSynthesis.getVoices();
-    if (!voices || voices.length === 0) return null;
-    
-    // Priority order for natural British accent in Chrome/Web Speech API
-    jarvisVoice = voices.find(v => v.name.includes("Google UK English Male"))
+    jarvisVoice = voices.find(v => v.name.includes("Daniel")) // <-- Moved to the top!
+      || voices.find(v => v.name.includes("Google UK English Male"))
       || voices.find(v => v.lang === "en-GB" && v.name.toLowerCase().includes("male"))
-      || voices.find(v => v.name.includes("Daniel"))
-      || voices.find(v => v.name.includes("George"))
-      || voices.find(v => v.lang === "en-GB")
-      || voices.find(v => v.lang.startsWith("en-GB"))
-      || voices.find(v => v.name.toLowerCase().includes("british"))
-      || voices.find(v => v.lang.startsWith("en"))
       || voices[0];
-    return jarvisVoice;
   }
   if (typeof speechSynthesis !== "undefined") {
     speechSynthesis.onvoiceschanged = loadVoice;
