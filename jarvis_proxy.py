@@ -17,13 +17,12 @@ try:
     SCREEN_CAPTURE_AVAILABLE = True
 except ImportError:
     SCREEN_CAPTURE_AVAILABLE = False
-    print("[WARNING] Pillow library not found. Screen reading disabled. Run 'pip install Pillow'")
 
 # --- WEB SEARCH ---
 try:
     from ddgs import DDGS
 except ImportError:
-    from duckduckgo_search import DDGS  # legacy name fallback
+    from duckduckgo_search import DDGS
 
 # --- STOCK MARKET ---
 try:
@@ -56,19 +55,25 @@ LOCATION_HINTS = [
 # SCREEN UNDERSTANDING MODULE
 # ==========================================
 def capture_screen_base64():
-    if not SCREEN_CAPTURE_AVAILABLE: return None
+    if not SCREEN_CAPTURE_AVAILABLE: 
+        return None
     try:
         screenshot = ImageGrab.grab(all_screens=True)
-        if screenshot.mode in ("RGBA", "P"): screenshot = screenshot.convert("RGB")
+        if screenshot.mode in ("RGBA", "P"): 
+            screenshot = screenshot.convert("RGB")
         screenshot.thumbnail((1920, 1080))
         buffered = io.BytesIO()
         screenshot.save(buffered, format="JPEG", quality=80)
         return base64.b64encode(buffered.getvalue()).decode("utf-8")
-    except Exception as e:
+    except Exception:
         return None
 
 def is_screen_prompt(prompt):
-    screen_triggers = ["what am i looking at", "on my screen", "read my screen", "this cad model", "this drawing", "my screen", "look at this", "what is this on my screen", "explain this code"]
+    screen_triggers = [
+        "what am i looking at", "on my screen", "read my screen", 
+        "this cad model", "this drawing", "my screen", "look at this", 
+        "what is this on my screen", "explain this code"
+    ]
     return any(trigger in prompt.lower().strip() for trigger in screen_triggers)
 
 # ==========================================
@@ -78,19 +83,29 @@ def extract_app_command(prompt):
     lower = prompt.lower().strip()
     if lower.startswith("open ") or lower.startswith("launch ") or lower.startswith("start "):
         parts = lower.split(" ", 1)
-        if len(parts) > 1: return re.sub(r"[^\w\s]", "", parts[1].strip())
+        if len(parts) > 1: 
+            return re.sub(r"[^\w\s]", "", parts[1].strip())
     return None
 
 def launch_local_application(app_name):
-    app_map = {"chrome": "chrome", "vs code": "code", "vscode": "code", "solidworks": "SLDWORKS", "matlab": "matlab", "discord": "discord", "file explorer": "explorer", "explorer": "explorer", "notepad": "notepad", "calculator": "calc", "terminal": "wt", "fusion 360": "fusion360", "autocad": "acad"}
+    app_map = {
+        "chrome": "chrome", "vs code": "code", "vscode": "code", 
+        "solidworks": "SLDWORKS", "matlab": "matlab", "discord": "discord", 
+        "file explorer": "explorer", "explorer": "explorer", "notepad": "notepad", 
+        "calculator": "calc", "terminal": "wt", "fusion 360": "fusion360", "autocad": "acad"
+    }
     target = app_map.get(app_name.lower(), app_name)
     try:
         sys_name = platform.system()
-        if sys_name == "Windows": os.system(f"start {target}")
-        elif sys_name == "Darwin": os.system(f"open -a {target}")
-        else: os.system(f"xdg-open {target} &")
+        if sys_name == "Windows": 
+            os.system(f"start {target}")
+        elif sys_name == "Darwin": 
+            os.system(f"open -a {target}")
+        else: 
+            os.system(f"xdg-open {target} &")
         return True
-    except Exception: return False
+    except Exception: 
+        return False
 
 # ==========================================
 # INTELLIGENT ROUTER
@@ -99,22 +114,28 @@ def determine_intent(prompt):
     lower = prompt.lower().strip()
     word_count = len(lower.split())
 
-    if extract_app_command(prompt): return "APP_CONTROL"
-    if is_screen_prompt(prompt): return "SCREEN_READ"
-    if any(hint in lower for hint in LOCATION_HINTS): return "LOCATION"
+    if extract_app_command(prompt): 
+        return "APP_CONTROL"
+    if is_screen_prompt(prompt): 
+        return "SCREEN_READ"
+    if any(hint in lower for hint in LOCATION_HINTS): 
+        return "LOCATION"
         
     market_triggers = ["stock", "price", "shares", "market", "invest", "ticker", "finance", "earnings"]
-    if any(trigger in lower for trigger in market_triggers): return "MARKET_RESEARCH"
+    if any(trigger in lower for trigger in market_triggers): 
+        return "MARKET_RESEARCH"
 
     short_chat_triggers = ["hi", "hello", "hey", "thanks", "thank you", "morning", "evening", "bye", "goodbye", "how are you", "whats up", "what's up", "good", "nice", "cool", "awesome"]
     if lower in short_chat_triggers or (word_count <= 4 and any(w in lower for w in short_chat_triggers)):
         return "SHORT_CHAT"
 
     engineering_triggers = ["cad", "model", "design", "build", "code", "script", "error", "idea", "brainstorm", "tolerance", "mechanics", "robot", "python", "solidworks", "help me"]
-    if any(trigger in lower for trigger in engineering_triggers): return "ENGINEERING"
+    if any(trigger in lower for trigger in engineering_triggers): 
+        return "ENGINEERING"
 
     research_triggers = ["what is", "who is", "tell me about", "latest", "news", "search", "explain how"]
-    if any(trigger in lower for trigger in research_triggers): return "RESEARCH"
+    if any(trigger in lower for trigger in research_triggers): 
+        return "RESEARCH"
 
     return "CONVERSATION"
 
@@ -122,24 +143,28 @@ def extract_possible_ticker(prompt):
     words = re.findall(r'\b[A-Z]{1,5}\b', prompt)
     ignore = {"WHAT", "HOW", "WHY", "IS", "THE", "IN", "ON", "AT", "TO", "FOR", "JARVIS", "STOCK", "PRICE", "BUY", "SELL"}
     for w in words:
-        if w not in ignore: return w
+        if w not in ignore: 
+            return w
     return None
 
 # ==========================================
-# MEMORY ROUTES (FIXES THE 405 ERRORS)
+# MEMORY ROUTES
 # ==========================================
 def load_memory(limit=10):
-    if not os.path.exists(MEMORY_PATH): return []
+    if not os.path.exists(MEMORY_PATH): 
+        return []
     try:
         with open(MEMORY_PATH, "r", encoding="utf-8") as f:
             return [json.loads(line) for line in f if line.strip()][-limit:]
-    except Exception: return []
+    except Exception: 
+        return []
 
 def save_memory_entry(role, text):
     try:
         with open(MEMORY_PATH, "a", encoding="utf-8") as f:
             f.write(json.dumps({"role": role, "text": text, "timestamp": datetime.now().isoformat()}) + "\n")
-    except Exception: pass
+    except Exception: 
+        pass
 
 @app.route("/memory/save", methods=["POST"])
 def memory_save_route():
@@ -157,7 +182,8 @@ def memory_recent_route():
 # ==========================================
 def extract_location_query(prompt):
     lower = prompt.lower().strip()
-    if any(token in lower for token in ["where am i", "my location", "near me"]): return ""
+    if any(token in lower for token in ["where am i", "my location", "near me"]): 
+        return ""
     patterns = ["where is ", "locate ", "find ", "take me to ", "map of ", "show me the city ", "where are ", "show me "]
     for pattern in patterns:
         if pattern in lower:
@@ -168,7 +194,8 @@ def extract_location_query(prompt):
     return re.sub(r"[^\w\s-]", "", re.sub(r"\b(on the map|the map)\b", "", prompt, flags=re.IGNORECASE)).strip()
 
 def summarize_location(display_name, query, wiki_text, nearby, weather):
-    if wiki_text: return wiki_text
+    if wiki_text: 
+        return wiki_text
     primary = (display_name or query or "this location").split(",")[0].strip()
     nearby_summary = f" Nearby reference points include {', '.join(nearby[:2])}." if nearby else ""
     weather_summary = f" Current weather is {weather['condition']} at {weather['temperature']} degrees Fahrenheit." if weather.get("condition") else ""
@@ -182,12 +209,14 @@ def fetch_assistant_reply(system_instruction, prompt_for_ollama, fallback_reply,
         "stream": False,
         "options": {"num_predict": max_tokens}
     }
-    if images: payload["images"] = images
+    if images: 
+        payload["images"] = images
     try:
         ollama_response = requests.post(os.getenv("OLLAMA_URL", DEFAULT_OLLAMA_URL), json=payload, timeout=30)
         bot_reply = ollama_response.json().get("response", fallback_reply)
         return " ".join(re.sub(r"\(.*?\)|\[.*?\]", "", bot_reply).strip().split()) or fallback_reply
-    except Exception: return fallback_reply
+    except Exception: 
+        return fallback_reply
 
 # ==========================================
 # WEB & DATA FETCHING
@@ -200,54 +229,77 @@ def fetch_live_data_and_images(query):
             with DDGS() as ddgs:
                 try:
                     results = list(ddgs.text(query, max_results=3))
-                    if results: text_context = "\n".join([f"{r.get('title','')}: {r.get('body','')}" for r in results])
-                except Exception: pass
+                    if results: 
+                        text_context = "\n".join([f"{r.get('title','')}: {r.get('body','')}" for r in results])
+                except Exception: 
+                    pass
 
                 try:
                     news_results = list(ddgs.news(query, max_results=4))
-                    if news_results: news_context = "\n".join([f"Date: {r.get('date', '')} | News: {r.get('title','')}" for r in news_results])
-                except Exception: pass
+                    if news_results: 
+                        news_context = "\n".join([f"Date: {r.get('date', '')} | News: {r.get('title','')}" for r in news_results])
+                except Exception: 
+                    pass
 
                 try:
                     img_results = list(ddgs.images(query, max_results=6))
-                    if img_results: image_urls = [img.get('image') for img in img_results if img.get('image')]
-                except Exception: pass
-    except Exception: pass
+                    if img_results: 
+                        for img in img_results:
+                            u = img.get('image') or img.get('thumbnail')
+                            if u and u.startswith("http"):
+                                image_urls.append(u)
+                except Exception: 
+                    pass
+    except Exception: 
+        pass
 
     if not image_urls:
         try:
             wiki_res = requests.get(f"https://en.wikipedia.org/api/rest_v1/page/summary/{requests.utils.quote(query)}", timeout=4)
             if wiki_res.ok:
                 wiki_data = wiki_res.json()
-                if "thumbnail" in wiki_data and wiki_data["thumbnail"].get("source"): image_urls.append(wiki_data["thumbnail"]["source"])
-                if not text_context and "extract" in wiki_data: text_context = wiki_data["extract"]
-        except Exception: pass
+                if "thumbnail" in wiki_data and wiki_data["thumbnail"].get("source"): 
+                    image_urls.append(wiki_data["thumbnail"]["source"])
+                if not text_context and "extract" in wiki_data: 
+                    text_context = wiki_data["extract"]
+        except Exception: 
+            pass
         
     return text_context, news_context, [u for u in image_urls if u and u.startswith("http")]
 
 @app.route("/api/image")
 def proxy_image():
     url = request.args.get("url")
-    if not url: return "No URL provided", 400
+    if not url: 
+        return "No URL provided", 400
     try:
-        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, stream=True, timeout=5)
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        r = requests.get(url, headers=headers, stream=True, timeout=6)
         return send_file(io.BytesIO(r.content), mimetype=r.headers.get("content-type", "image/jpeg"))
-    except Exception as e: return str(e), 500
+    except Exception as e: 
+        return str(e), 500
 
 @app.route("/api/location-info", methods=["POST"])
 def location_info():
     data = request.get_json() or {}
     query, latitude, longitude = data.get("query", "").strip(), data.get("latitude"), data.get("longitude")
-    if not query and (latitude is None or longitude is None): return jsonify({"status": "error", "message": "No location data provided."})
+    if not query and (latitude is None or longitude is None): 
+        return jsonify({"status": "error", "message": "No location data provided."})
 
     try:
-        if latitude is not None and longitude is not None: geocode_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={latitude}&lon={longitude}&addressdetails=1&accept-language=en"
-        else: geocode_url = f"https://nominatim.openstreetmap.org/search?format=json&q={requests.utils.quote(query)}&addressdetails=1&limit=1&accept-language=en"
+        if latitude is not None and longitude is not None: 
+            geocode_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={latitude}&lon={longitude}&addressdetails=1&accept-language=en"
+        else: 
+            geocode_url = f"https://nominatim.openstreetmap.org/search?format=json&q={requests.utils.quote(query)}&addressdetails=1&limit=1&accept-language=en"
         
-        geocode_data = requests.get(geocode_url, timeout=6).json()
+        headers = {"User-Agent": "JARVIS-HUD/1.0"}
+        geocode_res = requests.get(geocode_url, headers=headers, timeout=6)
+        geocode_data = geocode_res.json()
+        
         place = geocode_data[0] if isinstance(geocode_data, list) and geocode_data else geocode_data if isinstance(geocode_data, dict) else None
-        lat = float(place.get("lat", latitude)) if place and place.get("lat") else latitude
-        lon = float(place.get("lon", longitude)) if place and place.get("lon") else longitude
+        
+        lat = float(place.get("lat")) if place and place.get("lat") is not None else float(latitude) if latitude is not None else None
+        lon = float(place.get("lon")) if place and place.get("lon") is not None else float(longitude) if longitude is not None else None
         display_name = place.get("display_name", query) if place else query
 
         weather = {}
@@ -259,15 +311,20 @@ def location_info():
 
         _, _, image_urls = fetch_live_data_and_images(query or display_name)
         return jsonify({
-            "status": "success", "title": display_name or query or "Location",
+            "status": "success", 
+            "title": display_name or query or "Location",
             "description": summarize_location(display_name, query, "", [], weather),
-            "coords": {"lat": lat, "lon": lon}, "weather": weather, "images": image_urls[:6],
-            "nearby": [], "links": [{"label": "Open in Maps", "url": f"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}#map=14/{lat}/{lon}"}],
+            "coords": {"lat": lat, "lon": lon}, 
+            "weather": weather, 
+            "images": image_urls[:6],
+            "nearby": [], 
+            "links": [{"label": "Open in Maps", "url": f"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}#map=14/{lat}/{lon}"}],
         })
-    except Exception as exc: return jsonify({"status": "error", "message": str(exc)})
+    except Exception as exc: 
+        return jsonify({"status": "error", "message": str(exc)})
 
 # ==========================================
-# MAIN ASSISTANT LOGIC (THE BRAIN)
+# MAIN ASSISTANT LOGIC
 # ==========================================
 @app.route("/api/assistant", methods=["POST"])
 def assistant():
@@ -275,7 +332,8 @@ def assistant():
     user_prompt = (data.get("prompt") or "").strip()
     page_context, location_context = data.get("page_context") or {}, data.get("location_context") or {}
 
-    if not user_prompt: return jsonify({"status": "error", "message": "Empty prompt."}), 400
+    if not user_prompt: 
+        return jsonify({"status": "error", "message": "Empty prompt."}), 400
 
     category = determine_intent(user_prompt)
     research_bundle = {"summary": "", "news": "", "images": [], "links": [], "location": None, "page": None}
@@ -307,8 +365,10 @@ def assistant():
                 summary = info.get("longBusinessSummary", "")[:600]
                 text_data = f"Financial Data for {name} ({ticker_sym}): Current Price: ${price}. Summary: {summary}..."
                 news_items = tkr.news
-                if news_items: news_data = "\n".join([f"- {n.get('title')}" for n in news_items[:4]])
-            except Exception: pass
+                if news_items: 
+                    news_data = "\n".join([f"- {n.get('title')}" for n in news_items[:4]])
+            except Exception: 
+                pass
                 
         if not text_data:
             search_query = user_prompt.replace("Jarvis", "").strip() + " stock market financial news 2026"
@@ -329,7 +389,6 @@ def assistant():
     if ("webpage" in user_prompt.lower() or "page" in user_prompt.lower()) and page_context:
         research_bundle["page"] = {"title": page_context.get("title", "Current webpage"), "excerpt": page_context.get("selection") or page_context.get("body_text", "")[:1500]}
 
-    # 3. BUILD PERSONA & 2026 TIME AWARENESS
     recent_mem = load_memory(8)
     mem_str = " | ".join([f"{m['role']}: {m['text']}" for m in recent_mem])
     
@@ -337,7 +396,6 @@ def assistant():
     if research_bundle.get("summary") and category not in ["SHORT_CHAT", "CONVERSATION", "ENGINEERING"]:
         context_parts.append(research_bundle["summary"])
 
-    # This dynamically injects today's date, but forces the year to 2026!
     current_date = datetime.now().strftime(f"%A, %B %d, 2026")
     base_persona = f"You are JARVIS. The current date is {current_date}. "
 
@@ -366,7 +424,7 @@ def assistant():
         prompt_for_ollama = f"{base_persona}Confirm that you are opening the requested application in exactly one sentence.\nUser request: {user_prompt}"
         fallback_reply = "Right away, sir."
         
-    else: # CONVERSATION
+    else:
         max_tokens = 60
         prompt_for_ollama = f"{base_persona}Speak naturally and concisely. Address the user as sir. Keep replies strictly under 2 sentences.\nMemory: {mem_str}\nUser request: {user_prompt}"
         fallback_reply = "I am here, sir."
@@ -385,21 +443,28 @@ def location_info_internal(query="", latitude=None, longitude=None):
         payload = response.get_json() if hasattr(response, "get_json") else None
         return payload if payload and payload.get("status") == "success" else None
 
+# ==========================================
+# FIXED TTS ROUTE - NO 400 NETWORK ERRORS
+# ==========================================
 @app.route("/tts", methods=["POST"])
 def tts():
     data = request.get_json() or {}
     text = data.get("text", "")
-    if not text: return jsonify({"error": "No text provided"}), 400
-    if not FISH_API_KEY or not FISH_VOICE_ID: return jsonify({"error": "No API key"}), 400
+    if not text or not FISH_API_KEY or not FISH_VOICE_ID:
+        # Return 200 with fallback signal to prevent browser 400 network error logs
+        return jsonify({"fallback": True}), 200
     try:
         res = requests.post("https://api.fish.audio/v1/tts", headers={"Authorization": f"Bearer {FISH_API_KEY}", "Content-Type": "application/json"},
             json={"text": text, "reference_id": FISH_VOICE_ID, "model": "s2.1-pro-free", "format": "mp3"}, timeout=10)
-        res.raise_for_status()
+        if not res.ok:
+            return jsonify({"fallback": True}), 200
         return Response(res.content, mimetype="audio/mpeg")
-    except Exception as e: return jsonify({"error": str(e)}), 502
+    except Exception:
+        return jsonify({"fallback": True}), 200
 
 @app.route("/health")
-def health(): return jsonify({"status": "ok"})
+def health(): 
+    return jsonify({"status": "ok"})
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 HUD_HTML_PATH = os.path.join(BASE_DIR, "hud.html")
@@ -407,18 +472,21 @@ HUD_HTML_PATH = os.path.join(BASE_DIR, "hud.html")
 @app.route("/")
 def index():
     if os.path.exists(HUD_HTML_PATH):
-        with open(HUD_HTML_PATH, "r", encoding="utf-8") as f: return Response(f.read(), mimetype="text/html")
+        with open(HUD_HTML_PATH, "r", encoding="utf-8") as f: 
+            return Response(f.read(), mimetype="text/html")
     return "hud.html not found.", 404
 
 @app.route("/<path:filename>")
 def static_assets(filename):
     safe = os.path.normpath(filename).lstrip("/\\")
-    if ".." in safe: return "Forbidden", 403
+    if ".." in safe: 
+        return "Forbidden", 403
     return send_from_directory(BASE_DIR, safe)
 
 if __name__ == "__main__":
     print("--------------------------------------------------")
     print(" JARVIS SERVER ONLINE | http://localhost:8000")
-    if SCREEN_CAPTURE_AVAILABLE: print(" [SYSTEM] Screen Capture Vision Module: ONLINE")
+    if SCREEN_CAPTURE_AVAILABLE: 
+        print(" [SYSTEM] Screen Capture Vision Module: ONLINE")
     print("--------------------------------------------------")
     app.run(host="0.0.0.0", port=8000, debug=False)
