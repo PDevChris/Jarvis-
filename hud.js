@@ -54,7 +54,7 @@
   }
   function closeHoloPanel(id) { document.getElementById(id).classList.remove("visible"); }
 
-  // --- NEW WINDOW MANAGEMENT & PHYSICS ---
+  // --- WINDOW MANAGEMENT & PHYSICS ---
   let activeFloatingWindows = [];
 
   function dismissWindow(panel) {
@@ -100,7 +100,6 @@
     holoWorkspace.appendChild(fragment);
     const createdPanel = holoWorkspace.lastElementChild;
     
-    // Spawn roughly in the center with a slight random offset so they don't perfectly overlap
     const cascadeX = Math.max(20, window.innerWidth / 2 - 220 + (Math.random() * 80 - 40));
     const cascadeY = Math.max(80, window.innerHeight / 2 - 180 + (Math.random() * 60 - 30));
     
@@ -222,10 +221,19 @@
       const data = new Uint8Array(analyser.frequencyBinCount);
       let lastClapTime = 0;
       function checkClap() {
+        if (bootStarted) {
+          stream.getTracks().forEach(t => t.stop());
+          try { ctx.close(); } catch(e) {}
+          return;
+        }
         analyser.getByteFrequencyData(data);
         const avg = data.reduce((a, b) => a + b, 0) / data.length, now = Date.now();
         if (avg > 55 && now - lastClapTime > 1200) {
-          lastClapTime = now; stream.getTracks().forEach(t => t.stop()); ctx.close(); bootSystem(); return;
+          lastClapTime = now;
+          stream.getTracks().forEach(t => t.stop());
+          try { ctx.close(); } catch(e) {}
+          bootSystem();
+          return;
         }
         if (!bootStarted) requestAnimationFrame(checkClap);
       }
@@ -252,20 +260,59 @@
     playWakeSequence(() => speak("Online, sir.", () => startListening()));
   }
 
-  // ============ TTS ============
+  // ============ TTS VOICE SELECTION (HIGH-QUALITY BRITISH FALLBACK) ============
   let jarvisVoice = null;
   function loadVoice() {
+    if (typeof speechSynthesis === "undefined") return null;
     const voices = speechSynthesis.getVoices();
-    jarvisVoice = voices.find(v => v.lang === "en-GB" && v.name.toLowerCase().includes("male")) || voices.find(v => v.lang === "en-GB") || voices[0];
+    if (!voices || voices.length === 0) return null;
+    
+    // Priority order for natural British accent in Chrome/Web Speech API
+    jarvisVoice = voices.find(v => v.name.includes("Google UK English Male"))
+      || voices.find(v => v.lang === "en-GB" && v.name.toLowerCase().includes("male"))
+      || voices.find(v => v.name.includes("Daniel"))
+      || voices.find(v => v.name.includes("George"))
+      || voices.find(v => v.lang === "en-GB")
+      || voices.find(v => v.lang.startsWith("en-GB"))
+      || voices.find(v => v.name.toLowerCase().includes("british"))
+      || voices.find(v => v.lang.startsWith("en"))
+      || voices[0];
+    return jarvisVoice;
   }
-  speechSynthesis.onvoiceschanged = loadVoice;
+  if (typeof speechSynthesis !== "undefined") {
+    speechSynthesis.onvoiceschanged = loadVoice;
+    loadVoice();
+  }
 
   function speakBrowserVoice(text, onComplete) {
+    if (typeof speechSynthesis === "undefined") {
+      if (onComplete) onComplete();
+      return;
+    }
+    speechSynthesis.cancel();
+    stopListening(); // Mute mic while speaking
+    
     const utterance = new SpeechSynthesisUtterance(text);
-    if (!jarvisVoice) loadVoice();
-    if (jarvisVoice) utterance.voice = jarvisVoice;
-    utterance.pitch = 0.9; utterance.rate = 1.02;
-    utterance.onend = () => { currentState = "IDLE"; statusText.textContent = "SYSTEM READY"; cleanupUnpinnedWindows(); if (onComplete) onComplete(); };
+    const v = loadVoice();
+    if (v) utterance.voice = v;
+    utterance.pitch = 0.95;
+    utterance.rate = 1.0;
+
+    utterance.onend = () => {
+      currentState = "IDLE";
+      statusText.textContent = "SYSTEM READY";
+      cleanupUnpinnedWindows();
+      if (onComplete) onComplete();
+      startListening(); // Resume listening after speaking
+    };
+    utterance.onerror = (e) => {
+      console.warn("[TTS Error]", e);
+      currentState = "IDLE";
+      statusText.textContent = "SYSTEM READY";
+      if (onComplete) onComplete();
+      startListening();
+    };
+
     speechSynthesis.speak(utterance);
   }
 
@@ -278,29 +325,88 @@
   }
 
   async function speak(text, onComplete) {
-    currentState = "SPEAKING"; statusText.textContent = "AUDIO OUTPUT..."; transcript.textContent = "JARVIS: " + text;
+    currentState = "SPEAKING"; 
+    statusText.textContent = "AUDIO OUTPUT..."; 
+    transcript.textContent = "JARVIS: " + text;
+    stopListening(); // Mute mic while speaking
+
     try {
-      const blob = await apiClient.tts(text); const url = URL.createObjectURL(blob);
+      const blob = await apiClient.tts(text); 
+      const url = URL.createObjectURL(blob);
       const audioEl = new Audio(url);
-      audioEl.onended = () => { URL.revokeObjectURL(url); currentState = "IDLE"; statusText.textContent = "SYSTEM READY"; cleanupUnpinnedWindows(); if (onComplete) onComplete(); };
+      audioEl.onended = () => { 
+        URL.revokeObjectURL(url); 
+        currentState = "IDLE"; 
+        statusText.textContent = "SYSTEM READY"; 
+        cleanupUnpinnedWindows(); 
+        if (onComplete) onComplete(); 
+        startListening(); // Resume listening
+      };
       audioEl.onerror = () => speakBrowserVoice(text, onComplete);
       audioEl.play();
-    } catch (_) { speakBrowserVoice(text, onComplete); }
+    } catch (_) { 
+      speakBrowserVoice(text, onComplete); 
+    }
   }
 
-  // ============ SPEECH RECOGNITION ============
+  // ============ SPEECH RECOGNITION (CONTROLLED MIC LIFECYCLE) ============
   const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = SpeechRecognitionCtor ? new SpeechRecognitionCtor() : null;
+  let isListening = false;
+  let recognitionRestartTimer = null;
+
   if (recognition) {
-    recognition.continuous = true; recognition.interimResults = false; recognition.lang = "en-US";
+    recognition.continuous = false; // Using non-continuous mode prevents endless mic loops
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+
     recognition.onresult = (e) => {
       if (currentState === "SPEAKING" || currentState === "THINKING") return;
       const heard = e.results[e.results.length - 1][0].transcript.trim();
-      if (heard) processQuery(heard);
+      if (heard) {
+        stopListening();
+        processQuery(heard);
+      }
     };
-    recognition.onend = () => { try { recognition.start(); } catch (e) {} };
+
+    recognition.onerror = (event) => {
+      if (event.error !== "no-speech" && event.error !== "aborted") {
+        console.warn("[Speech Recog Error]:", event.error);
+      }
+    };
+
+    recognition.onend = () => {
+      isListening = false;
+      if (bootStarted && currentState === "IDLE") {
+        clearTimeout(recognitionRestartTimer);
+        recognitionRestartTimer = setTimeout(() => {
+          startListening();
+        }, 400);
+      }
+    };
   }
-  function startListening() { if (!recognition) return; currentState = "LISTENING"; statusText.textContent = "LISTENING..."; try { recognition.start(); } catch (e) {} }
+
+  function startListening() {
+    if (!recognition || !bootStarted || currentState === "SPEAKING" || currentState === "THINKING") return;
+    if (isListening) return;
+    try {
+      recognition.start();
+      isListening = true;
+      currentState = "LISTENING";
+      statusText.textContent = "LISTENING...";
+    } catch (e) {
+      isListening = false;
+    }
+  }
+
+  function stopListening() {
+    if (!recognition) return;
+    isListening = false;
+    clearTimeout(recognitionRestartTimer);
+    try {
+      recognition.stop();
+    } catch (e) {}
+  }
 
   // ============ INTENT DETECTION & HELPERS ============
   const LOCATION_PATTERN = /\b(where is|where are|where am i|take me to|show me|locate|map of|fly to|near me|around me)\b/i;
@@ -430,7 +536,7 @@
       stopProcessingChatter();
       transcript.textContent = "JARVIS: " + payload.response;
 
-      // STRICT ROUTING: ONLY open tabs if the category requires it
+      // STRICT ROUTING: ONLY open tabs if category is RESEARCH, MARKET_RESEARCH, or SCREEN_READ
       if (payload.category === "LOCATION") {
         await tryLocationIntent(question);
       } else if (["RESEARCH", "MARKET_RESEARCH", "SCREEN_READ"].includes(payload.category)) {
@@ -438,10 +544,14 @@
           openResearchWindows(question, payload);
         }
       } 
-      // Do absolutely nothing visually for CONVERSATION or APP_CONTROL.
+      // Do nothing visually for SHORT_CHAT, CONVERSATION, ENGINEERING, or APP_CONTROL.
 
       saveToMemory("jarvis", payload.response);
-      speak(payload.response, () => { statusText.textContent = "SYSTEM ACTIVE"; centerText.classList.remove("active"); isActiveSession = false; });
+      speak(payload.response, () => { 
+        statusText.textContent = "SYSTEM ACTIVE"; 
+        centerText.classList.remove("active"); 
+        isActiveSession = false; 
+      });
     } catch (err) {
       stopProcessingChatter();
       const offline = err.message?.includes("Failed to fetch") || !apiClient.connected;
