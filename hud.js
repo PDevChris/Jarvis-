@@ -267,7 +267,6 @@
     const voices = speechSynthesis.getVoices();
     if (!voices || voices.length === 0) return null;
     
-    // Priority order: Daniel is king.
     jarvisVoice = voices.find(v => v.name.includes("Daniel"))
       || voices.find(v => v.name.includes("Google UK English Male"))
       || voices.find(v => v.lang === "en-GB" && v.name.toLowerCase().includes("male"))
@@ -293,7 +292,6 @@
     const v = loadVoice();
     if (v) utterance.voice = v;
     
-    // Adjusted pitch and rate for standard, crisp Daniel voice
     utterance.pitch = 1.0;
     utterance.rate = 1.05;
 
@@ -329,7 +327,6 @@
     stopListening(); // Mute mic while speaking
 
     try {
-      // Try external API first. If it fails (like a 400 error), fail silently to the catch block.
       const blob = await apiClient.tts(text); 
       const url = URL.createObjectURL(blob);
       const audioEl = new Audio(url);
@@ -339,7 +336,7 @@
         statusText.textContent = "SYSTEM READY"; 
         cleanupUnpinnedWindows(); 
         if (onComplete) onComplete(); 
-        startListening(); // Resume listening
+        startListening(); 
       };
       audioEl.onerror = () => speakBrowserVoice(text, onComplete);
       audioEl.play();
@@ -356,7 +353,7 @@
   let recognitionRestartTimer = null;
 
   if (recognition) {
-    recognition.continuous = false; // Using non-continuous mode prevents endless mic loops
+    recognition.continuous = false;
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
@@ -495,7 +492,7 @@
   function startGlobeSpin() {
     if (!globeMap) return;
     const center = globeMap.getCenter();
-    center.lng -= 1.5; // Controls spin speed
+    center.lng -= 1.5; 
     globeMap.easeTo({ center, duration: 50, easing: n => n });
     spinAnimation = requestAnimationFrame(startGlobeSpin);
   }
@@ -523,7 +520,6 @@
     const map = ensureGlobeMap(); 
     setTimeout(() => map.resize(), 100);
     
-    // Start scanning animation (spinning globe) while backend fetches data
     stopGlobeSpin();
     map.jumpTo({ center: [-90, 20], zoom: 0.5, pitch: 0, bearing: 0 });
     startGlobeSpin();
@@ -539,16 +535,15 @@
         document.getElementById("globeDescription").textContent = `${data.description || "Location data ready."}`;
         document.getElementById("globeWeather").textContent = (data.weather && data.weather.condition) ? `${data.weather.condition} · ${data.weather.temperature}°F` : "WEATHER DATA UNAVAILABLE";
         
-        if (coords.lat && coords.lon) {
+        if (coords.lat !== undefined && coords.lon !== undefined) {
           clearExistingMapMarker();
-          stopGlobeSpin(); // Target locked, stop scanning
+          stopGlobeSpin(); // INSTANTLY stop the spin once target locked
           
-          // Cinematic Iron Man fly-in sequence
           map.flyTo({ 
             center: [coords.lon, coords.lat], 
             zoom: 13.5, 
             pitch: 65, 
-            bearing: Math.random() * 60 - 30, // Dynamic approach angle
+            bearing: Math.random() * 60 - 30, 
             speed: 0.9, 
             curve: 1.7, 
             essential: true 
@@ -573,14 +568,24 @@
     return true;
   }
 
+  // Silently handles chrome extension errors in Codespaces
   async function getPageContext() {
     if (!isExtension) return null;
-    return new Promise((resolve) => { chrome.runtime.sendMessage({ type: "JARVIS_PAGE_CONTEXT" }, (response) => { resolve(response?.pageContext || null); }); });
+    return new Promise((resolve) => { 
+      try {
+        chrome.runtime.sendMessage({ type: "JARVIS_PAGE_CONTEXT" }, (response) => { 
+          if (chrome.runtime.lastError) resolve(null);
+          else resolve(response?.pageContext || null); 
+        }); 
+      } catch (e) {
+        resolve(null);
+      }
+    }); 
   }
 
   function saveToMemory(role, text) { apiClient.saveMemory(role, text); }
 
-  // ============ QUERY PROCESSING (STRICT CATEGORY ROUTING) ============
+  // ============ QUERY PROCESSING ============
   async function processQuery(question) {
     currentState = "THINKING"; isActiveSession = true; centerText.classList.add("active");
     transcript.textContent = "You: " + question; statusText.textContent = "PROCESSING QUERY...";
@@ -597,7 +602,6 @@
       stopProcessingChatter();
       transcript.textContent = "JARVIS: " + payload.response;
 
-      // STRICT ROUTING: ONLY open tabs if category is RESEARCH, MARKET_RESEARCH, or SCREEN_READ
       if (payload.category === "LOCATION") {
         await tryLocationIntent(question);
       } else if (["RESEARCH", "MARKET_RESEARCH", "SCREEN_READ"].includes(payload.category)) {
@@ -605,7 +609,6 @@
           openResearchWindows(question, payload);
         }
       } 
-      // Do nothing visually for SHORT_CHAT, CONVERSATION, ENGINEERING, or APP_CONTROL.
 
       saveToMemory("jarvis", payload.response);
       speak(payload.response, () => { 
