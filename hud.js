@@ -14,7 +14,6 @@
     button.addEventListener("click", () => closeHoloPanel(button.dataset.closePanel));
   });
 
-  // HARD-DISABLED to prevent "vendor.js / tabs:outgoing" errors in Codespaces
   const isExtension = false; 
   let floatingWindowIndex = 0;
   let activeMapMarker = null;
@@ -261,7 +260,7 @@
     playWakeSequence(() => speak("Online, sir.", () => startListening()));
   }
 
-  // ============ TTS VOICE SELECTION (DANIEL PRIORITY) ============
+  // ============ TTS VOICE SELECTION ============
   let jarvisVoice = null;
   function loadVoice() {
     if (typeof speechSynthesis === "undefined") return null;
@@ -287,7 +286,7 @@
       return;
     }
     speechSynthesis.cancel();
-    stopListening(); // Mute mic while speaking
+    stopListening();
     
     const utterance = new SpeechSynthesisUtterance(text);
     const v = loadVoice();
@@ -301,7 +300,7 @@
       statusText.textContent = "SYSTEM READY";
       cleanupUnpinnedWindows();
       if (onComplete) onComplete();
-      startListening(); // Resume listening after speaking
+      startListening();
     };
     utterance.onerror = (e) => {
       currentState = "IDLE";
@@ -325,11 +324,15 @@
     currentState = "SPEAKING"; 
     statusText.textContent = "AUDIO OUTPUT..."; 
     transcript.textContent = "JARVIS: " + text;
-    stopListening(); // Mute mic while speaking
+    stopListening();
 
     try {
-      const blob = await apiClient.tts(text); 
-      const url = URL.createObjectURL(blob);
+      const res = await apiClient.tts(text); 
+      if (res && res.fallback) {
+        speakBrowserVoice(text, onComplete);
+        return;
+      }
+      const url = URL.createObjectURL(res);
       const audioEl = new Audio(url);
       audioEl.onended = () => { 
         URL.revokeObjectURL(url); 
@@ -342,12 +345,11 @@
       audioEl.onerror = () => speakBrowserVoice(text, onComplete);
       audioEl.play();
     } catch (_) { 
-      // Silently fallback to Browser Voice (Daniel) on any error
       speakBrowserVoice(text, onComplete); 
     }
   }
 
-  // ============ SPEECH RECOGNITION (CONTROLLED MIC LIFECYCLE) ============
+  // ============ SPEECH RECOGNITION ============
   const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = SpeechRecognitionCtor ? new SpeechRecognitionCtor() : null;
   let isListening = false;
@@ -367,9 +369,7 @@
       }
     };
 
-    recognition.onerror = (event) => {
-      // Ignore routine errors to keep console clean
-    };
+    recognition.onerror = (event) => {};
 
     recognition.onend = () => {
       isListening = false;
@@ -416,10 +416,15 @@
     });
   }
 
+  // Image grid with fallback proxy to prevent hotlink/CORS errors
   function renderImageGrid(images) {
     if (!images?.length) return "";
-    return `<div class="holo-image-grid">${images.slice(0, 6).map(src => `<img src="${src}" class="holo-img" onerror="this.style.display='none'" />`).join("")}</div>`;
+    return `<div class="holo-image-grid">${images.slice(0, 6).map(src => {
+      const proxied = `/api/image?url=${encodeURIComponent(src)}`;
+      return `<img src="${proxied}" class="holo-img" onerror="this.src='${src}'; this.onerror=null;" />`;
+    }).join("")}</div>`;
   }
+
   function renderLinkGrid(links) {
     if (!links?.length) return "";
     return `<div class="tab-link-grid">${links.map(link => `<a class="tab-link" href="${link.url}" target="_blank" rel="noreferrer">${link.label}</a>`).join("")}</div>`;
@@ -503,8 +508,9 @@
       cancelAnimationFrame(spinAnimation);
       spinAnimation = null;
     }
-    // EXTREMELY IMPORTANT: Stop the MapLibre easing immediately so flyTo works
-    if (globeMap) globeMap.stop();
+    if (globeMap) {
+      try { globeMap.stop(); } catch(e) {}
+    }
   }
 
   async function tryLocationIntent(question) {
@@ -533,34 +539,38 @@
       
       if (data.status === "success") {
         const coords = data.coords || {};
+        const lat = parseFloat(coords.lat);
+        const lon = parseFloat(coords.lon);
+
         document.getElementById("globeTitle").textContent = (data.title || place).toUpperCase();
-        document.getElementById("globeCoords").textContent = `LAT ${Number(coords.lat || 0).toFixed(4)}° / LON ${Number(coords.lon || 0).toFixed(4)}°`;
+        document.getElementById("globeCoords").textContent = `LAT ${isNaN(lat) ? 0 : lat.toFixed(4)}° / LON ${isNaN(lon) ? 0 : lon.toFixed(4)}°`;
         document.getElementById("globeDescription").textContent = `${data.description || "Location data ready."}`;
         document.getElementById("globeWeather").textContent = (data.weather && data.weather.condition) ? `${data.weather.condition} · ${data.weather.temperature}°F` : "WEATHER DATA UNAVAILABLE";
         
-        if (coords.lat !== undefined && coords.lon !== undefined) {
+        if (!isNaN(lat) && !isNaN(lon)) {
+          stopGlobeSpin();
           clearExistingMapMarker();
-          stopGlobeSpin(); // Stop spin and stop MapLibre easing
           
-          map.flyTo({ 
-            center: [coords.lon, coords.lat], 
-            zoom: 13.5, 
-            pitch: 65, 
-            bearing: Math.random() * 60 - 30, 
-            speed: 0.9, 
-            curve: 1.7, 
-            essential: true 
-          });
-          
-          const markerEl = document.createElement("div"); 
-          markerEl.style.width = "14px"; 
-          markerEl.style.height = "14px"; 
-          markerEl.style.borderRadius = "50%"; 
-          markerEl.style.background = "#ff3300"; 
-          markerEl.style.boxShadow = "0 0 18px #ff3300";
-          activeMapMarker = new maplibregl.Marker({ element: markerEl }).setLngLat([coords.lon, coords.lat]).addTo(map);
+          setTimeout(() => {
+            map.flyTo({ 
+              center: [lon, lat], 
+              zoom: 13.5, 
+              pitch: 65, 
+              bearing: Math.random() * 60 - 30, 
+              speed: 0.9, 
+              curve: 1.7, 
+              essential: true 
+            });
+            
+            const markerEl = document.createElement("div"); 
+            markerEl.style.width = "14px"; 
+            markerEl.style.height = "14px"; 
+            markerEl.style.borderRadius = "50%"; 
+            markerEl.style.background = "#ff3300"; 
+            markerEl.style.boxShadow = "0 0 18px #ff3300";
+            activeMapMarker = new maplibregl.Marker({ element: markerEl }).setLngLat([lon, lat]).addTo(map);
+          }, 150);
 
-          // NEW: SPAWN LOCATION IMAGES ALONGSIDE THE GLOBE
           if (data.images && data.images.length > 0) {
             createFloatingWindow({
               title: "LOCATION IMAGERY",
@@ -580,7 +590,7 @@
   }
 
   async function getPageContext() {
-    return null; // Disabled for Codespaces to prevent vendor.js errors
+    return null;
   }
 
   function saveToMemory(role, text) { apiClient.saveMemory(role, text); }
@@ -591,11 +601,9 @@
     transcript.textContent = "You: " + question; statusText.textContent = "PROCESSING QUERY...";
     startProcessingChatter(); saveToMemory("user", question);
 
-    const pageContext = null; 
-
     try {
       const locationContext = isCurrentLocationRequest(question) ? await getCurrentCoordinates() : null;
-      const payload = await apiClient.assistant(question, { page_context: pageContext, location_context: locationContext });
+      const payload = await apiClient.assistant(question, { page_context: null, location_context: locationContext });
       
       if (payload.status !== "success") throw new Error(payload.message || "Assistant request failed.");
 
