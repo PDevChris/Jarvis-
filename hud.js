@@ -54,7 +54,7 @@
   }
   function closeHoloPanel(id) { document.getElementById(id).classList.remove("visible"); }
 
-  // --- WINDOW MANAGEMENT & PHYSICS ---
+  // --- NEW WINDOW MANAGEMENT & PHYSICS ---
   let activeFloatingWindows = [];
 
   function dismissWindow(panel) {
@@ -100,6 +100,7 @@
     holoWorkspace.appendChild(fragment);
     const createdPanel = holoWorkspace.lastElementChild;
     
+    // Spawn roughly in the center with a slight random offset so they don't perfectly overlap
     const cascadeX = Math.max(20, window.innerWidth / 2 - 220 + (Math.random() * 80 - 40));
     const cascadeY = Math.max(80, window.innerHeight / 2 - 180 + (Math.random() * 60 - 30));
     
@@ -260,14 +261,24 @@
     playWakeSequence(() => speak("Online, sir.", () => startListening()));
   }
 
-  // ============ TTS VOICE SELECTION (HIGH-QUALITY BRITISH FALLBACK) ============
+  // ============ TTS VOICE SELECTION (DANIEL PRIORITY) ============
   let jarvisVoice = null;
   function loadVoice() {
+    if (typeof speechSynthesis === "undefined") return null;
     const voices = speechSynthesis.getVoices();
-    jarvisVoice = voices.find(v => v.name.includes("Daniel")) // <-- Moved to the top!
+    if (!voices || voices.length === 0) return null;
+    
+    // Priority order for natural British accent in Chrome/Web Speech API
+    jarvisVoice = voices.find(v => v.name.includes("Daniel"))
       || voices.find(v => v.name.includes("Google UK English Male"))
       || voices.find(v => v.lang === "en-GB" && v.name.toLowerCase().includes("male"))
+      || voices.find(v => v.name.includes("George"))
+      || voices.find(v => v.lang === "en-GB")
+      || voices.find(v => v.lang.startsWith("en-GB"))
+      || voices.find(v => v.name.toLowerCase().includes("british"))
+      || voices.find(v => v.lang.startsWith("en"))
       || voices[0];
+    return jarvisVoice;
   }
   if (typeof speechSynthesis !== "undefined") {
     speechSynthesis.onvoiceschanged = loadVoice;
@@ -461,12 +472,42 @@
 
   function clearExistingMapMarker() { if (activeMapMarker) { activeMapMarker.remove(); activeMapMarker = null; } }
 
+  // ---- Location panel & Cinematic Globe ----
   let globeMap = null;
+  let spinAnimation = null;
+
   function ensureGlobeMap() {
     if (globeMap) return globeMap;
-    globeMap = new maplibregl.Map({ container: 'globeMapContainer', style: { version: 8, sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256 } }, layers: [{ id: 'osm-layer', type: 'raster', source: 'osm', minzoom: 0, maxzoom: 19 }] }, center: [-20, 30], zoom: 1.2, pitch: 0, bearing: 0 });
-    globeMap.on('style.load', () => { try { globeMap.setProjection({ type: 'globe' }); } catch (e) {} });
+    globeMap = new maplibregl.Map({
+      container: 'globeMapContainer',
+      style: {
+        version: 8,
+        sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256 } },
+        layers: [{ id: 'osm-layer', type: 'raster', source: 'osm', minzoom: 0, maxzoom: 19 }]
+      },
+      center: [-90, 30], zoom: 0.5, pitch: 0, bearing: 0,
+      renderWorldCopies: false // Keeps it looking like a singular globe
+    });
+    
+    globeMap.on('style.load', () => { 
+      try { globeMap.setProjection({ type: 'globe' }); } catch (e) {} 
+    });
     return globeMap;
+  }
+
+  function startGlobeSpin() {
+    if (!globeMap) return;
+    const center = globeMap.getCenter();
+    center.lng -= 1.5; // Controls spin speed
+    globeMap.easeTo({ center, duration: 50, easing: n => n });
+    spinAnimation = requestAnimationFrame(startGlobeSpin);
+  }
+
+  function stopGlobeSpin() {
+    if (spinAnimation) {
+      cancelAnimationFrame(spinAnimation);
+      spinAnimation = null;
+    }
   }
 
   async function tryLocationIntent(question) {
@@ -476,14 +517,24 @@
 
     document.getElementById("globeTitle").textContent = (place || "CURRENT LOCATION").toUpperCase();
     document.getElementById("globeCoords").textContent = "SEARCHING...";
-    document.getElementById("globeDescription").textContent = "—"; document.getElementById("globeWeather").textContent = "—";
-    openHoloPanel("globePanel"); playHoloOpen();
-    const map = ensureGlobeMap(); setTimeout(() => map.resize(), 100);
-    map.jumpTo({ center: [-20, 30], zoom: 1.2, pitch: 0, bearing: 0 });
+    document.getElementById("globeDescription").textContent = "—"; 
+    document.getElementById("globeWeather").textContent = "—";
+    
+    openHoloPanel("globePanel"); 
+    playHoloOpen();
+    
+    const map = ensureGlobeMap(); 
+    setTimeout(() => map.resize(), 100);
+    
+    // Start scanning animation (spinning globe) while backend fetches data
+    stopGlobeSpin();
+    map.jumpTo({ center: [-90, 20], zoom: 0.5, pitch: 0, bearing: 0 });
+    startGlobeSpin();
 
     try {
       const payload = currentCoords ? { latitude: currentCoords.latitude, longitude: currentCoords.longitude, query: "Current location" } : { query: place };
       const data = await apiClient.locationInfo(payload);
+      
       if (data.status === "success") {
         const coords = data.coords || {};
         document.getElementById("globeTitle").textContent = (data.title || place).toUpperCase();
@@ -493,12 +544,35 @@
         
         if (coords.lat && coords.lon) {
           clearExistingMapMarker();
-          map.flyTo({ center: [coords.lon, coords.lat], zoom: 13, pitch: 60, bearing: 30, speed: 1.3, curve: 1.4, essential: true });
-          const markerEl = document.createElement("div"); markerEl.style.width = "14px"; markerEl.style.height = "14px"; markerEl.style.borderRadius = "50%"; markerEl.style.background = "#ff3300"; markerEl.style.boxShadow = "0 0 18px #ff3300";
+          stopGlobeSpin(); // Target locked, stop scanning
+          
+          // Cinematic Iron Man fly-in sequence
+          map.flyTo({ 
+            center: [coords.lon, coords.lat], 
+            zoom: 13.5, 
+            pitch: 65, 
+            bearing: Math.random() * 60 - 30, // Dynamic approach angle
+            speed: 0.9, 
+            curve: 1.7, 
+            essential: true 
+          });
+          
+          const markerEl = document.createElement("div"); 
+          markerEl.style.width = "14px"; 
+          markerEl.style.height = "14px"; 
+          markerEl.style.borderRadius = "50%"; 
+          markerEl.style.background = "#ff3300"; 
+          markerEl.style.boxShadow = "0 0 18px #ff3300";
           activeMapMarker = new maplibregl.Marker({ element: markerEl }).setLngLat([coords.lon, coords.lat]).addTo(map);
         }
-      } else document.getElementById("globeCoords").textContent = "TARGET UNREACHABLE";
-    } catch (e) { document.getElementById("globeCoords").textContent = "GEOCODING ERROR"; }
+      } else {
+        document.getElementById("globeCoords").textContent = "TARGET UNREACHABLE";
+        stopGlobeSpin();
+      }
+    } catch (e) { 
+      document.getElementById("globeCoords").textContent = "GEOCODING ERROR"; 
+      stopGlobeSpin();
+    }
     return true;
   }
 
