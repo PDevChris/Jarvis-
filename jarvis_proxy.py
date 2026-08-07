@@ -372,27 +372,31 @@ def assistant():
 
     # DYNAMIC PROMPTING BASED ON CATEGORY
     if category == "SHORT_CHAT":
-        max_tokens = 30
-        system_instruction = "You are JARVIS. The user is engaging in casual chat or greeting you. Respond naturally, politely, and strictly in 1 or 2 very short sentences."
+        max_tokens = 40
+        system_instruction = "You are JARVIS. The user is engaging in casual chat or greeting you. Respond naturally, politely, and strictly in 1 very short sentence."
         prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nKeep it brief."
         fallback_reply = "Hello, sir."
         
     elif category == "ENGINEERING":
-        max_tokens = 400
-        system_instruction = "You are JARVIS, an expert engineering AI. Collaborate thoughtfully on design, code, physics, and problem-solving. Be highly detailed."
-        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nProvide detailed analysis."
+        max_tokens = 150
+        system_instruction = "You are JARVIS, an expert engineering AI. Collaborate thoughtfully but concisely. Do not lecture. Give a fast, practical response under 3 sentences."
+        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nProvide a concise analysis."
         fallback_reply = "I am ready to assist with the engineering analysis, sir."
 
     elif category in ["RESEARCH", "MARKET_RESEARCH"]:
-        max_tokens = 350
-        system_instruction = "You are JARVIS, an analytical AI. Synthesize the provided data naturally. Explain the context, positive/negative outlooks, and summarize it beautifully for the user."
-        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nContext: {' '.join(context_parts)}\nExplain this data thoroughly."
-        fallback_reply = "Research complete, sir. Presenting the intelligence now."
+        max_tokens = 100
+        system_instruction = (
+            "You are JARVIS. Detailed research data has just been opened on the user's holographic display. "
+            "DO NOT read the details, numbers, or full text out loud. "
+            "Provide a fast, conversational 1-to-2 sentence verbal summary like a teammate."
+        )
+        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nContext: {' '.join(context_parts)}\nGive a very brief verbal summary."
+        fallback_reply = "Research complete, sir. Presenting the intelligence on your display."
         
     elif category == "SCREEN_READ":
-        max_tokens = 250
-        system_instruction = "You are JARVIS. Look at the image of the user's screen. Act as a collaborative partner and explain what is visible, especially focusing on engineering or code."
-        prompt_for_ollama = f"{system_instruction}\nUser request: {user_prompt}\nAnalyze the screen."
+        max_tokens = 150
+        system_instruction = "You are JARVIS. Look at the image of the user's screen. Give a highly concise, 2-sentence explanation of what you see, focusing on engineering or code."
+        prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}\nAnalyze the screen concisely."
         fallback_reply = "Processing visual telemetry now, sir."
 
     elif category == "APP_CONTROL":
@@ -402,11 +406,10 @@ def assistant():
         fallback_reply = "Right away, sir."
         
     else: # CONVERSATION
-        max_tokens = 80
-        system_instruction = "You are JARVIS. Speak naturally and concisely. Address the user as sir. Keep replies under 3 sentences."
+        max_tokens = 60
+        system_instruction = "You are JARVIS. Speak naturally and concisely. Address the user as sir. Keep replies strictly under 2 sentences."
         prompt_for_ollama = f"{system_instruction}\nMemory: {mem_str}\nUser request: {user_prompt}"
         fallback_reply = "I am here, sir."
-
     images_list = [encoded_screen] if encoded_screen else None
     reply = fetch_assistant_reply(system_instruction, prompt_for_ollama, fallback_reply, images=images_list, max_tokens=max_tokens)
     save_memory_entry("jarvis", reply)
